@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+redis>=5.2.0
+httpx>=0.28.0
+pillow>=11.0.0
+pytesseract>=0.3.13
+python-multipart>=0.0.18
+structlog>=24.4.0
+numpy>=2.2.0

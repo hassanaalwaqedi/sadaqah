@@ -1,0 +1,41 @@
+# ── Environment ──
+.env
+.env.local
+.env.production
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Go ──
+backend/tmp/
+backend/bin/
+
+# ── Node ──
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# ── Python ──
+ai-worker/__pycache__/
+ai-worker/.venv/
+ai-worker/*.pyc
+ai-worker/.pytest_cache/
+ai-worker/.ruff_cache/
+
+# ── Docker ──
+*.log
+
+# ── SSL Certs (production) ──
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# ── Secrets ──
+*serviceAccountKey.json

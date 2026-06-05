@@ -65,6 +65,14 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 	housingService := service.NewHousingService(housingRepo, logger)
 	housingHandler := handler.NewHousingHandler(housingService)
 
+	innovationRepo := repository.NewInnovationRepository(pool)
+	innovationService := service.NewInnovationService(innovationRepo, logger)
+	innovationHandler := handler.NewInnovationHandler(innovationService)
+
+	coreOpsRepo := repository.NewCoreOpsRepository(pool)
+	coreOpsService := service.NewCoreOpsService(coreOpsRepo, logger)
+	coreOpsHandler := handler.NewCoreOpsHandler(coreOpsService)
+
 	// Start Background Cron Jobs
 	housingService.StartRentInvoiceCron()
 
@@ -128,59 +136,41 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 				hsg.Get("/invoices/me", housingHandler.GetMyInvoices)
 			})
 
-			// ── Innovation (placeholder) ──
+			// ── Innovation ──
 			authenticated.Route("/innovation", func(inn chi.Router) {
 				inn.Route("/events", func(e chi.Router) {
-					e.Get("/", notImplemented)
-					e.Post("/", notImplemented)
+					e.Get("/", innovationHandler.GetEvents)
+					e.With(middleware.RequireRoles("super_admin", "admin")).Post("/", innovationHandler.CreateEvent)
+					e.Post("/{eventId}/submit", innovationHandler.SubmitProject)
 				})
-				inn.Route("/submissions", func(s chi.Router) {
-					s.Get("/", notImplemented)
-					s.Post("/", notImplemented)
-				})
-			})
-
-			// ── Donations (placeholder) ──
-			authenticated.Route("/donations", func(don chi.Router) {
-				don.Route("/campaigns", func(c chi.Router) {
-					c.Get("/", notImplemented)
-					c.Post("/", notImplemented)
-				})
-				don.Post("/", notImplemented)
-				don.Get("/my-donations", notImplemented)
-			})
-
-			// ── Finance (placeholder) ──
-			authenticated.Route("/finance", func(fin chi.Router) {
-				fin.Route("/transactions", func(t chi.Router) {
-					t.Get("/", notImplemented)
-					t.Post("/", notImplemented)
-				})
-				fin.Route("/budgets", func(b chi.Router) {
-					b.Get("/", notImplemented)
-					b.Post("/", notImplemented)
-				})
-				fin.Route("/expenses", func(e chi.Router) {
-					e.Get("/", notImplemented)
-					e.Post("/", notImplemented)
+				inn.Route("/judging", func(j chi.Router) {
+					j.With(middleware.RequireRoles("judge", "super_admin")).Get("/", innovationHandler.GetJudgingAssignments)
+					j.With(middleware.RequireRoles("judge", "super_admin")).Post("/{assignmentId}", innovationHandler.SubmitScores)
 				})
 			})
 
-			// ── Research (placeholder) ──
-			authenticated.Route("/research", func(res chi.Router) {
-				res.Route("/grants", func(g chi.Router) {
-					g.Get("/", notImplemented)
-					g.Post("/", notImplemented)
-				})
+			// ── Campaigns & Donations ──
+			authenticated.Route("/campaigns", func(c chi.Router) {
+				c.Get("/", coreOpsHandler.GetCampaigns)
+				c.Post("/donate", coreOpsHandler.ProcessDonation)
 			})
 
-			// ── Inventory (placeholder) ──
+			// ── Financial ──
+			authenticated.Route("/finance", func(f chi.Router) {
+				f.With(middleware.RequireRoles("super_admin", "admin", "auditor")).Get("/budgets", coreOpsHandler.GetBudgets)
+			})
+
+			// ── Research ──
+			authenticated.Route("/research", func(r chi.Router) {
+				r.With(middleware.RequireRoles("super_admin", "admin", "researcher")).Post("/grants", coreOpsHandler.SubmitGrant)
+			})
+
+			// ── Inventory ──
 			authenticated.Route("/inventory", func(inv chi.Router) {
-				inv.Route("/assets", func(a chi.Router) {
-					a.Get("/", notImplemented)
-					a.Post("/", notImplemented)
-				})
+				inv.With(middleware.RequireRoles("super_admin", "admin")).Get("/assets", coreOpsHandler.GetAssets)
 			})
+
+
 
 			// ── Notifications ──
 			authenticated.Route("/notifications", func(notif chi.Router) {

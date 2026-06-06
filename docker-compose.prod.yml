@@ -31,7 +31,10 @@ services:
 
   # ── Go API Server ───────────────────────────────────────
   go-api:
-    image: ${API_IMAGE:-ghcr.io/sadaqah/backend-api:latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: sadaqah-api:latest
     container_name: sadaqah-api
     environment:
       - APP_ENV=production
@@ -69,7 +72,10 @@ services:
 
   # ── FastAPI AI Worker ───────────────────────────────────
   ai-worker:
-    image: ${AI_IMAGE:-ghcr.io/sadaqah/backend-ai-worker:latest}
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    image: sadaqah-ai-worker:latest
     container_name: sadaqah-ai-worker
     environment:
       - APP_ENV=production

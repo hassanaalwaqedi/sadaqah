@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.NODE_ENV === "production" ? "export" : undefined,
+  output: process.env.NODE_ENV === "production" ? "standalone" : undefined,
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
   },

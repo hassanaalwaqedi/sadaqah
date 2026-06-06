@@ -8,6 +8,9 @@ const nextConfig = {
     unoptimized: true,
   },
   async rewrites() {
+    // Only proxy API calls in development — in production the frontend
+    // calls the backend directly via NEXT_PUBLIC_API_URL.
+    if (process.env.NODE_ENV !== "development") return [];
     return [
       {
         source: "/api/v1/:path*",

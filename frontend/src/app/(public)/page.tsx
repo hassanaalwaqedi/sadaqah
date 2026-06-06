@@ -2,6 +2,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, GraduationCap, DollarSign, Heart } from "lucide-react";
 
+// Don't pre-render at build time — the backend API is not available on Vercel's
+// build servers, so SSG would always fail. Render fresh on each request instead.
+export const dynamic = "force-dynamic";
+
 async function getMetrics() {
   try {
     const baseUrl = process.env.SSR_API_URL || process.env.NEXT_PUBLIC_API_URL || "https://sadaqah-api.duckdns.org/api/v1";

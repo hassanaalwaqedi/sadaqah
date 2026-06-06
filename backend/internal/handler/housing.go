@@ -24,7 +24,7 @@ func (h *HousingHandler) GetBuildings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch buildings", http.StatusInternalServerError)
 		return
 	}
-	RespondJSON(w, http.StatusOK, buildings)
+	writeJSON(w, http.StatusOK, buildings)
 }
 
 // GetRooms returns the list of rooms and occupancy status for the interactive map
@@ -35,7 +35,7 @@ func (h *HousingHandler) GetRooms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch rooms", http.StatusInternalServerError)
 		return
 	}
-	RespondJSON(w, http.StatusOK, rooms)
+	writeJSON(w, http.StatusOK, rooms)
 }
 
 // AllocateRoom assigns a student to a room/bed
@@ -48,7 +48,7 @@ func (h *HousingHandler) AllocateRoom(w http.ResponseWriter, r *http.Request) {
 		LeaseEnd      string `json:"lease_end"`
 	}
 
-	if err := ParseJSON(r, &req); err != nil {
+	if err := parseJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
@@ -59,22 +59,22 @@ func (h *HousingHandler) AllocateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Room successfully allocated"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Room successfully allocated"})
 }
 
 // GetMyInvoices returns the pending rent invoices for the logged-in resident
 func (h *HousingHandler) GetMyInvoices(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value(middleware.UserClaimsKey).(*middleware.Claims)
+	id, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	invoices, err := h.svc.GetPendingInvoices(r.Context(), claims.UserID.String())
+	invoices, err := h.svc.GetPendingInvoices(r.Context(), id.String())
 	if err != nil {
 		http.Error(w, "Failed to fetch invoices", http.StatusInternalServerError)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, invoices)
+	writeJSON(w, http.StatusOK, invoices)
 }

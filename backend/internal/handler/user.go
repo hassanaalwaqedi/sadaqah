@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/sadaqah/backend/internal/middleware"
+	"github.com/sadaqah/backend/internal/model"
 	"github.com/sadaqah/backend/internal/service"
 )
 
@@ -24,7 +25,14 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	params := parsePagination(r)
 
-	resp, err := h.userService.ListUsers(r.Context(), params)
+	// Extract filters
+	filters := model.UserFilterParams{
+		PaginationParams: params,
+		RoleFilter:       r.URL.Query().Get("role"),
+		StatusFilter:     r.URL.Query().Get("status"),
+	}
+
+	resp, err := h.userService.ListUsersFiltered(r.Context(), filters)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list users")
 		return
@@ -94,6 +102,36 @@ func (h *UserHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Role assigned successfully"})
 }
 
+// RemoveRole handles DELETE /api/v1/admin/users/{id}/roles/{roleId}
+func (h *UserHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
+	userIDStr := chi.URLParam(r, "id")
+	targetUserID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid role ID format")
+		return
+	}
+
+	adminID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
+		return
+	}
+
+	if err := h.userService.RemoveRole(r.Context(), targetUserID, roleID, adminID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to remove role")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Role removed successfully"})
+}
+
 // Deactivate handles DELETE /api/v1/admin/users/{id}
 func (h *UserHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -122,3 +160,123 @@ func (h *UserHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "User deactivated successfully"})
 }
+
+// SuspendUser handles POST /api/v1/admin/users/{id}/suspend
+func (h *UserHandler) SuspendUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	targetUserID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	adminID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
+		return
+	}
+
+	if targetUserID == adminID {
+		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "Cannot suspend your own account")
+		return
+	}
+
+	var req model.SuspendUserRequest
+	_ = parseJSON(r, &req) // reason is optional
+
+	if err := h.userService.SuspendUser(r.Context(), targetUserID, adminID, req.Reason); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to suspend user")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "User suspended successfully"})
+}
+
+// ReactivateUser handles POST /api/v1/admin/users/{id}/reactivate
+func (h *UserHandler) ReactivateUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	targetUserID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	adminID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
+		return
+	}
+
+	if err := h.userService.ReactivateUser(r.Context(), targetUserID, adminID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to reactivate user")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "User reactivated successfully"})
+}
+
+// GetLoginHistory handles GET /api/v1/admin/users/{id}/login-history
+func (h *UserHandler) GetLoginHistory(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	userID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	history, err := h.userService.GetLoginHistory(r.Context(), userID, 50)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get login history")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.SuccessResponse{
+		Message: "Login history retrieved",
+		Data:    history,
+	})
+}
+
+// GetUserActivity handles GET /api/v1/admin/users/{id}/activity
+func (h *UserHandler) GetUserActivity(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	userID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	activity, err := h.userService.GetUserActivity(r.Context(), userID, 50)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get user activity")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.SuccessResponse{
+		Message: "User activity retrieved",
+		Data:    activity,
+	})
+}
+
+// ForceLogout handles POST /api/v1/admin/users/{id}/force-logout
+func (h *UserHandler) ForceLogout(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	targetUserID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid user ID format")
+		return
+	}
+
+	adminID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
+		return
+	}
+
+	if err := h.userService.ForceLogout(r.Context(), targetUserID, adminID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to force logout")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "User force-logged out successfully"})
+}
+

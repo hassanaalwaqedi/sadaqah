@@ -48,13 +48,46 @@ type Budget struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type BudgetAllocation struct {
+	ID              uuid.UUID `json:"id"`
+	BudgetID        uuid.UUID `json:"budget_id"`
+	Program         string    `json:"program"`
+	AllocatedAmount float64   `json:"allocated_amount"`
+	SpentAmount     float64   `json:"spent_amount"`
+}
+
+type FinancialTransaction struct {
+	ID              uuid.UUID  `json:"id"`
+	Type            string     `json:"type"` // income, expense, transfer
+	Category        string     `json:"category"`
+	Amount          float64    `json:"amount"`
+	Currency        string     `json:"currency"`
+	Description     string     `json:"description,omitempty"`
+	ReferenceType   string     `json:"reference_type,omitempty"`
+	ReferenceID     *uuid.UUID `json:"reference_id,omitempty"`
+	BudgetID        *uuid.UUID `json:"budget_id,omitempty"`
+	RecordedBy      *uuid.UUID `json:"recorded_by,omitempty"`
+	TransactionDate time.Time  `json:"transaction_date"`
+	CreatedAt       time.Time  `json:"created_at"`
+}
+
+type DonationReceipt struct {
+	ID         uuid.UUID  `json:"id"`
+	DonationID uuid.UUID  `json:"donation_id"`
+	FileID     *uuid.UUID `json:"file_id,omitempty"`
+	ReceiptNo  string     `json:"receipt_no"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
 type ExpenseRequest struct {
-	ID          uuid.UUID `json:"id"`
-	RequesterID uuid.UUID `json:"requester_id"`
-	Amount      float64   `json:"amount"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"` // submitted, manager_approved, finance_approved, disbursed, rejected
-	CreatedAt   time.Time `json:"created_at"`
+	ID                 uuid.UUID  `json:"id"`
+	RequesterID        uuid.UUID  `json:"requester_id"`
+	BudgetAllocationID *uuid.UUID `json:"budget_allocation_id,omitempty"`
+	Amount             float64    `json:"amount"`
+	Description        string     `json:"description"`
+	Status             string     `json:"status"` // submitted, manager_approved, finance_approved, disbursed, rejected
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // ── Research ──
@@ -83,4 +116,13 @@ type Asset struct {
 	Condition    string    `json:"condition,omitempty"` // new, good, fair, poor, decommissioned
 	Location     string    `json:"location,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type SystemReport struct {
+	TotalUsers         int     `json:"total_users"`
+	TotalDonations     float64 `json:"total_donations"`
+	ActiveCampaigns    int     `json:"active_campaigns"`
+	TotalScholarships  int     `json:"total_scholarships"`
+	HousingOccupancy   int     `json:"housing_occupancy"`
+	PendingEvaluations int     `json:"pending_evaluations"`
 }

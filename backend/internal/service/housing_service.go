@@ -12,15 +12,19 @@ import (
 	"github.com/sadaqah/backend/internal/repository"
 )
 
+// HousingService handles housing allocation and rent management.
 type HousingService struct {
-	repo   *repository.HousingRepository
-	logger *slog.Logger
+	repo         *repository.HousingRepository
+	auditService *AuditService
+	logger       *slog.Logger
 }
 
-func NewHousingService(repo *repository.HousingRepository, logger *slog.Logger) *HousingService {
+// NewHousingService creates a new HousingService.
+func NewHousingService(repo *repository.HousingRepository, auditService *AuditService, logger *slog.Logger) *HousingService {
 	return &HousingService{
-		repo:   repo,
-		logger: logger,
+		repo:         repo,
+		auditService: auditService,
+		logger:       logger,
 	}
 }
 
@@ -55,6 +59,18 @@ func (s *HousingService) AllocateRoom(ctx context.Context, appID, roomID, reside
 		s.logger.Error("Failed to allocate room", "error", err, "appID", appID)
 		return err
 	}
+
+	auditData := map[string]interface{}{
+		"application_id": aID,
+		"room_id":        rID,
+		"resident_id":    resID,
+		"lease_start":    leaseStart,
+		"lease_end":      leaseEnd,
+	}
+
+	// Audit Log
+	s.auditService.LogAction(ctx, "ALLOCATE_ROOM", "room_allocation", aID, nil, auditData)
+
 	s.logger.Info("Successfully allocated room", "appID", appID, "roomID", roomID)
 	return nil
 }

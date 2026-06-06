@@ -6,25 +6,26 @@ import "github.com/google/uuid"
 
 // RegisterRequest is the request body for user registration.
 type RegisterRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	FirstNameEN string `json:"first_name_en"`
-	LastNameEN  string `json:"last_name_en"`
+	Email       string `json:"email" validate:"required,email"`
+	Password    string `json:"password" validate:"required,min=8,max=128"`
+	FirstNameEN string `json:"first_name_en" validate:"required"`
+	LastNameEN  string `json:"last_name_en" validate:"required"`
 	FirstNameAR string `json:"first_name_ar,omitempty"`
 	LastNameAR  string `json:"last_name_ar,omitempty"`
 }
 
 // LoginRequest is the request body for user login.
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 // TokenResponse is returned after successful login or token refresh.
 type TokenResponse struct {
-	AccessToken  string          `json:"access_token"`
-	TokenType    string          `json:"token_type"`
-	ExpiresIn    int64           `json:"expires_in"`
+	AccessToken  string          `json:"access_token,omitempty"`
+	RefreshToken string          `json:"refresh_token,omitempty"`
+	TokenType    string          `json:"token_type,omitempty"`
+	ExpiresIn    int64           `json:"expires_in,omitempty"`
 	User         UserWithProfile `json:"user"`
 }
 
@@ -135,3 +136,65 @@ func DefaultPagination() PaginationParams {
 		Order:    "desc",
 	}
 }
+
+// ── RBAC DTOs ──
+
+// CreateRoleRequest is the payload for creating a new role.
+type CreateRoleRequest struct {
+	Name          string    `json:"name" validate:"required"`
+	DisplayNameEN string    `json:"display_name_en" validate:"required"`
+	DisplayNameAR string    `json:"display_name_ar" validate:"required"`
+	Description   *string   `json:"description,omitempty"`
+	PermissionIDs []uuid.UUID `json:"permission_ids,omitempty"`
+}
+
+// UpdateRoleRequest is the payload for updating a role.
+type UpdateRoleRequest struct {
+	Name          string  `json:"name,omitempty"`
+	DisplayNameEN string  `json:"display_name_en,omitempty"`
+	DisplayNameAR string  `json:"display_name_ar,omitempty"`
+	Description   *string `json:"description,omitempty"`
+}
+
+// CloneRoleRequest is the payload for cloning a role.
+type CloneRoleRequest struct {
+	Name          string `json:"name" validate:"required"`
+	DisplayNameEN string `json:"display_name_en" validate:"required"`
+	DisplayNameAR string `json:"display_name_ar" validate:"required"`
+}
+
+// AssignPermissionsRequest is the payload for assigning permissions to a role.
+type AssignPermissionsRequest struct {
+	PermissionIDs []uuid.UUID `json:"permission_ids" validate:"required"`
+}
+
+// RemovePermissionsRequest is the payload for removing permissions from a role.
+type RemovePermissionsRequest struct {
+	PermissionIDs []uuid.UUID `json:"permission_ids" validate:"required"`
+}
+
+// SuspendUserRequest is the admin payload for suspending a user.
+type SuspendUserRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// UserFilterParams extends PaginationParams with role and status filters.
+type UserFilterParams struct {
+	PaginationParams
+	RoleFilter   string `json:"role_filter,omitempty"`
+	StatusFilter string `json:"status_filter,omitempty"` // active, suspended, all
+}
+
+// AdminUserResponse is the enriched user response for admin views.
+type AdminUserResponse struct {
+	UserWithProfile
+	LoginHistory      []LoginAttempt `json:"login_history,omitempty"`
+	RecentActivity    []AuditLog     `json:"recent_activity,omitempty"`
+	ProfileComplete   float64        `json:"profile_completeness"` // 0-100
+}
+
+// AssignMultipleRolesRequest supports assigning multiple roles at once.
+type AssignMultipleRolesRequest struct {
+	RoleIDs []uuid.UUID `json:"role_ids" validate:"required"`
+}
+

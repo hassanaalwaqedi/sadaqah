@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # ── Nginx Reverse Proxy ─────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sadaqah-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    depends_on:
+      - go-api
+      - nextjs
+    networks:
+      - frontend
+      - backend
+    restart: always
+
+  # ── Certbot for Let's Encrypt SSL ───────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: sadaqah-certbot
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+
+  # ── Next.js Frontend ────────────────────────────────────
+  nextjs:
+    image: ${WEB_IMAGE:-ghcr.io/sadaqah/backend-web:latest}
+    container_name: sadaqah-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost/api/v1}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    networks:
+      - frontend
+    restart: always
+
+  # ── Go API Server ───────────────────────────────────────
+  go-api:
+    image: ${API_IMAGE:-ghcr.io/sadaqah/backend-api:latest}
+    container_name: sadaqah-api
+    environment:
+      - APP_ENV=production
+      - API_HOST=${API_HOST:-0.0.0.0}
+      - API_PORT=${API_PORT:-8080}
+      - API_READ_TIMEOUT=${API_READ_TIMEOUT:-15s}
+      - API_WRITE_TIMEOUT=${API_WRITE_TIMEOUT:-15s}
+      - DATABASE_URL=postgres://${DB_USER:-sadaqah}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-sadaqah}?sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_ACCESS_EXPIRY=${JWT_ACCESS_EXPIRY:-15m}
+      - JWT_REFRESH_EXPIRY=${JWT_REFRESH_EXPIRY:-168h}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/serviceAccountKey.json
+      - MINIO_BUCKET=${MINIO_BUCKET:-sadaqah-files}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+      - AI_INTERNAL_API_KEY=${AI_INTERNAL_API_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_FROM=${SMTP_FROM}
+    volumes:
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - frontend
+      - backend
+    restart: always
+
+  # ── FastAPI AI Worker ───────────────────────────────────
+  ai-worker:
+    image: ${AI_IMAGE:-ghcr.io/sadaqah/backend-ai-worker:latest}
+    container_name: sadaqah-ai-worker
+    environment:
+      - APP_ENV=production
+      - PORT=8000
+      - INTERNAL_API_KEY=${AI_INTERNAL_API_KEY}
+    networks:
+      - backend
+    restart: always
+
+  # ── PostgreSQL Database ─────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sadaqah-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-sadaqah}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-sadaqah}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: always
+
+  # ── Redis Cache ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sadaqah-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: always
+
+  # ── MinIO Object Storage ────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: sadaqah-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend
+    restart: always
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  certbot_conf:
+  certbot_www:

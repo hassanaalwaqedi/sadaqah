@@ -1,0 +1,111 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Go API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-api
+          tags: |
+            type=sha
+            latest
+
+      - name: Build and push Go API Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          target: prod
+
+      - name: Extract metadata (tags, labels) for Next.js
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-web
+          tags: |
+            type=sha
+            latest
+
+      - name: Build and push Next.js Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          target: prod
+
+      - name: Extract metadata (tags, labels) for AI Worker
+        id: meta-ai
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-ai-worker
+          tags: |
+            type=sha
+            latest
+
+      - name: Build and push AI Worker Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai-worker
+          push: true
+          tags: ${{ steps.meta-ai.outputs.tags }}
+          labels: ${{ steps.meta-ai.outputs.labels }}
+          target: prod
+
+  deploy:
+    name: Deploy to Production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Execute deployment over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ~/backend
+            
+            # Pull the latest images
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            
+            # Initialize SSL certificates if not present
+            chmod +x init-letsencrypt.sh
+            ./init-letsencrypt.sh
+
+            # Restart containers with new images
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # Run migrations on the API container
+            docker exec sadaqah-api /app/migrate -path /app/migrations -database "$DATABASE_URL" up

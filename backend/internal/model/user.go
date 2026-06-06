@@ -9,15 +9,19 @@ import (
 // ── User ──
 
 type User struct {
-	ID            uuid.UUID  `json:"id"`
-	Email         string     `json:"email"`
-	PasswordHash  string     `json:"-"`
-	EmailVerified bool       `json:"email_verified"`
-	IsActive      bool       `json:"is_active"`
-	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"-"`
+	ID               uuid.UUID  `json:"id"`
+	Email            string     `json:"email"`
+	PasswordHash     *string    `json:"-"`
+	Provider         string     `json:"provider"`
+	ProviderID       *string    `json:"provider_id,omitempty"`
+	AvatarURL        *string    `json:"avatar_url,omitempty"`
+	EmailVerified    bool       `json:"email_verified"`
+	IsActive         bool       `json:"is_active"`
+	ProfileCompleted bool       `json:"profile_completed"`
+	LastLoginAt      *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DeletedAt        *time.Time `json:"-"`
 }
 
 // UserProfile holds extended profile information.
@@ -43,6 +47,25 @@ type UserProfile struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
+// StudentProfile holds specific onboarding data for students.
+type StudentProfile struct {
+	UserID           uuid.UUID `json:"user_id"`
+	PhoneNumber      *string   `json:"phone_number,omitempty"`
+	Nationality      *string   `json:"nationality,omitempty"`
+	Country          *string   `json:"country,omitempty"`
+	City             *string   `json:"city,omitempty"`
+	UniversityName   *string   `json:"university_name,omitempty"`
+	Faculty          *string   `json:"faculty,omitempty"`
+	Department       *string   `json:"department,omitempty"`
+	AcademicYear     *int      `json:"academic_year,omitempty"`
+	GPA              *float64  `json:"gpa,omitempty"`
+	HousingRequired  bool      `json:"housing_required"`
+	FamilyIncome     *float64  `json:"family_income,omitempty"`
+	EmergencyContact *string   `json:"emergency_contact,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 // UserWithProfile combines user and profile data for API responses.
 type UserWithProfile struct {
 	User
@@ -59,7 +82,38 @@ type Role struct {
 	DisplayNameAR string    `json:"display_name_ar"`
 	Description   *string   `json:"description,omitempty"`
 	IsSystem      bool      `json:"is_system"`
+	IsActive      bool      `json:"is_active"`
 	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// RoleWithPermissions includes the full permission list for a role.
+type RoleWithPermissions struct {
+	Role
+	Permissions []Permission `json:"permissions"`
+}
+
+// RoleWithCounts includes permission and user counts for admin listings.
+type RoleWithCounts struct {
+	Role
+	PermissionCount int `json:"permission_count"`
+	UserCount       int `json:"user_count"`
+}
+
+// PermissionGroup organizes permissions by domain.
+type PermissionGroup struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	SortOrder   int       `json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// PermissionWithGroup adds group info to a permission.
+type PermissionWithGroup struct {
+	Permission
+	GroupID   *uuid.UUID `json:"group_id,omitempty"`
+	GroupName string     `json:"group_name"`
 }
 
 type Permission struct {
@@ -101,21 +155,6 @@ type LoginAttempt struct {
 	Success     bool      `json:"success"`
 	AttemptedAt time.Time `json:"attempted_at"`
 	UserAgent   *string   `json:"user_agent,omitempty"`
-}
-
-// ── Audit ──
-
-type AuditLog struct {
-	ID         uuid.UUID              `json:"id"`
-	UserID     *uuid.UUID             `json:"user_id,omitempty"`
-	Action     string                 `json:"action"`
-	EntityType string                 `json:"entity_type"`
-	EntityID   uuid.UUID              `json:"entity_id"`
-	OldValues  map[string]interface{} `json:"old_values,omitempty"`
-	NewValues  map[string]interface{} `json:"new_values,omitempty"`
-	IPAddress  *string                `json:"ip_address,omitempty"`
-	UserAgent  *string                `json:"user_agent,omitempty"`
-	CreatedAt  time.Time              `json:"created_at"`
 }
 
 // ── Notifications ──

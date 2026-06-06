@@ -8,6 +8,7 @@ interface User {
   email: string;
   email_verified: boolean;
   is_active: boolean;
+  profile_completed: boolean;
   profile?: {
     first_name_en: string;
     last_name_en: string;
@@ -23,6 +24,7 @@ interface User {
     display_name_en: string;
     display_name_ar: string;
   }>;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -30,11 +32,14 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   hasRole: (role: string) => boolean;
   hasAnyRole: (...roles: string[]) => boolean;
+  hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (...permissions: string[]) => boolean;
 }
 
 interface RegisterData {
@@ -54,18 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
-
       const response = await apiClient.get("/users/me");
       setUser(response.data);
     } catch {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -78,25 +74,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const response = await apiClient.post("/auth/login", { email, password });
-    const { access_token, user: userData } = response.data;
+    const { user: userData } = response.data;
+    setUser(userData);
+  };
 
-    localStorage.setItem("access_token", access_token);
-    if (response.data.refresh_token) {
-      localStorage.setItem("refresh_token", response.data.refresh_token);
-    }
-
+  const loginWithGoogle = async (idToken: string) => {
+    const response = await apiClient.post("/auth/google", { id_token: idToken });
+    const { user: userData } = response.data;
     setUser(userData);
   };
 
   const register = async (data: RegisterData) => {
     const response = await apiClient.post("/auth/register", data);
-    const { access_token, user: userData } = response.data;
-
-    localStorage.setItem("access_token", access_token);
-    if (response.data.refresh_token) {
-      localStorage.setItem("refresh_token", response.data.refresh_token);
-    }
-
+    const { user: userData } = response.data;
     setUser(userData);
   };
 
@@ -106,8 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore errors during logout
     } finally {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
       setUser(null);
     }
   };
@@ -120,6 +108,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.some((role) => hasRole(role));
   };
 
+  const hasPermission = (permission: string): boolean => {
+    // Super admin has all permissions
+    if (hasRole("super_admin")) return true;
+    return user?.permissions?.includes(permission) ?? false;
+  };
+
+  const hasAnyPermission = (...permissions: string[]): boolean => {
+    if (hasRole("super_admin")) return true;
+    return permissions.some((p) => user?.permissions?.includes(p)) ?? false;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -127,11 +126,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        loginWithGoogle,
         register,
         logout,
         refreshUser,
         hasRole,
         hasAnyRole,
+        hasPermission,
+        hasAnyPermission,
       }}
     >
       {children}
@@ -146,3 +148,4 @@ export function useAuth() {
   }
   return context;
 }
+

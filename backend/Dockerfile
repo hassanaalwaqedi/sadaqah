@@ -1,5 +1,5 @@
 # ── Build Stage ──
-FROM golang:1.23-alpine AS builder
+FROM golang:alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -14,7 +14,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/server ./cmd/server
 
 # ── Dev Stage (with hot reload via air) ──
-FROM golang:1.24-alpine AS dev
+FROM golang:alpine AS dev
 
 RUN go install github.com/air-verse/air@v1.52.3 && \
     go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest

@@ -85,3 +85,16 @@ func (h *ScholarshipHandler) SubmitApplication(w http.ResponseWriter, r *http.Re
 
 	writeJSON(w, http.StatusCreated, map[string]string{"message": "Application submitted successfully"})
 }
+
+// GetCertificateData handles GET /api/v1/scholarships/applications/{id}/certificate
+func (h *ScholarshipHandler) GetCertificateData(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	
+	data, err := h.service.GetCertificateData(r.Context(), idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, data)
+}

@@ -2,8 +2,10 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sadaqah/backend/internal/middleware"
 	"github.com/sadaqah/backend/internal/model"
@@ -23,29 +25,7 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 // Register handles POST /api/v1/auth/register
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req model.RegisterRequest
-	if err := parseJSON(r, &req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
-		return
-	}
-
-	// Validate
-	var errs []model.FieldError
-	if req.Email == "" {
-		errs = append(errs, model.FieldError{Field: "email", Message: "Email is required"})
-	}
-	if req.Password == "" {
-		errs = append(errs, model.FieldError{Field: "password", Message: "Password is required"})
-	} else if len(req.Password) < 8 {
-		errs = append(errs, model.FieldError{Field: "password", Message: "Password must be at least 8 characters"})
-	}
-	if req.FirstNameEN == "" {
-		errs = append(errs, model.FieldError{Field: "first_name_en", Message: "First name (English) is required"})
-	}
-	if req.LastNameEN == "" {
-		errs = append(errs, model.FieldError{Field: "last_name_en", Message: "Last name (English) is required"})
-	}
-	if len(errs) > 0 {
-		writeValidationError(w, r, errs)
+	if !parseAndValidateJSON(w, r, &req) {
 		return
 	}
 
@@ -59,27 +39,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookies(w, r, resp.AccessToken, resp.RefreshToken, 15*time.Minute, 168*time.Hour)
+	resp.AccessToken = ""
+	resp.RefreshToken = ""
 	writeJSON(w, http.StatusCreated, resp)
 }
 
 // Login handles POST /api/v1/auth/login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req model.LoginRequest
-	if err := parseJSON(r, &req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
-		return
-	}
-
-	// Validate
-	var errs []model.FieldError
-	if req.Email == "" {
-		errs = append(errs, model.FieldError{Field: "email", Message: "Email is required"})
-	}
-	if req.Password == "" {
-		errs = append(errs, model.FieldError{Field: "password", Message: "Password is required"})
-	}
-	if len(errs) > 0 {
-		writeValidationError(w, r, errs)
+	if !parseAndValidateJSON(w, r, &req) {
 		return
 	}
 
@@ -101,6 +70,44 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookies(w, r, resp.AccessToken, resp.RefreshToken, 15*time.Minute, 168*time.Hour)
+	resp.AccessToken = ""
+	resp.RefreshToken = ""
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GoogleLogin handles POST /api/v1/auth/google
+func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
+		return
+	}
+
+	if req.IDToken == "" {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "id_token is required")
+		return
+	}
+
+	ip := getClientIP(r)
+	userAgent := r.UserAgent()
+
+	resp, err := h.authService.GoogleLogin(r.Context(), req.IDToken, ip, userAgent)
+	if err != nil {
+		if errors.Is(err, service.ErrAccountInactive) {
+			writeError(w, r, http.StatusForbidden, "FORBIDDEN", "Account is inactive")
+			return
+		}
+		log.Printf("[DEBUG] GoogleLogin service error: %v", err)
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Google token or login failed")
+		return
+	}
+
+	setAuthCookies(w, r, resp.AccessToken, resp.RefreshToken, 15*time.Minute, 168*time.Hour)
+	resp.AccessToken = ""
+	resp.RefreshToken = ""
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -110,6 +117,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err := parseJSON(r, &req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
 		return
+	}
+
+	// First try to get refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err == nil {
+		req.RefreshToken = cookie.Value
 	}
 
 	if req.RefreshToken == "" {
@@ -130,6 +143,9 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookies(w, r, resp.AccessToken, resp.RefreshToken, 15*time.Minute, 168*time.Hour)
+	resp.AccessToken = ""
+	resp.RefreshToken = ""
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -155,7 +171,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model.SuccessResponse{Message: "Logged out successfully"})
+	clearAuthCookies(w, r)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
 // Me handles GET /api/v1/users/me

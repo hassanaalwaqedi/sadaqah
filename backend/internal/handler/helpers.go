@@ -11,6 +11,63 @@ import (
 	"github.com/sadaqah/backend/internal/model"
 )
 
+// ── Auth Cookie Helpers ──
+
+// setAuthCookies sets secure HTTP-only cookies for access and refresh tokens.
+func setAuthCookies(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string, accessExpiry, refreshExpiry time.Duration) {
+	// Determine if we should use Secure cookies (true in production/HTTPS)
+	isSecure := r.Header.Get("X-Forwarded-Proto") == "https" || r.TLS != nil
+
+	if accessToken != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "access_token",
+			Value:    accessToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   isSecure,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(accessExpiry.Seconds()),
+		})
+	}
+
+	if refreshToken != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "refresh_token",
+			Value:    refreshToken,
+			Path:     "/api/v1/auth/refresh", // Only send refresh token on refresh endpoint
+			HttpOnly: true,
+			Secure:   isSecure,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(refreshExpiry.Seconds()),
+		})
+	}
+}
+
+// clearAuthCookies clears the auth cookies.
+func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
+	isSecure := r.Header.Get("X-Forwarded-Proto") == "https" || r.TLS != nil
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/api/v1/auth/refresh",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
+
 // ── JSON Helpers ──
 
 // writeJSON writes a JSON response with the given status code.
@@ -52,6 +109,22 @@ func parseJSON(r *http.Request, dst interface{}) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(dst)
+}
+
+// parseAndValidateJSON decodes JSON, validates with struct tags, and writes errors automatically.
+// Returns true if validation passed, false if an error response was already written.
+func parseAndValidateJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+	if err := parseJSON(r, dst); err != nil {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
+		return false
+	}
+
+	if errs := validateStruct(dst); len(errs) > 0 {
+		writeValidationError(w, r, errs)
+		return false
+	}
+
+	return true
 }
 
 // ── Pagination Helpers ──

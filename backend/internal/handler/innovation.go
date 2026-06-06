@@ -20,7 +20,7 @@ func NewInnovationHandler(svc *service.InnovationService) *InnovationHandler {
 }
 
 func (h *InnovationHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value(middleware.UserClaimsKey).(*middleware.Claims)
+	id, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -33,7 +33,7 @@ func (h *InnovationHandler) CreateEvent(w http.ResponseWriter, r *http.Request) 
 		SubmissionDeadline string `json:"submission_deadline"`
 	}
 
-	if err := ParseJSON(r, &req); err != nil {
+	if err := parseJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
@@ -44,13 +44,13 @@ func (h *InnovationHandler) CreateEvent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	event, err := h.svc.CreateEvent(r.Context(), req.NameEn, req.NameAr, req.Description, deadline, claims.UserID.String())
+	event, err := h.svc.CreateEvent(r.Context(), req.NameEn, req.NameAr, req.Description, deadline, id.String())
 	if err != nil {
 		http.Error(w, "Failed to create event", http.StatusInternalServerError)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, event)
+	writeJSON(w, http.StatusCreated, event)
 }
 
 func (h *InnovationHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
@@ -59,14 +59,14 @@ func (h *InnovationHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch events", http.StatusInternalServerError)
 		return
 	}
-	RespondJSON(w, http.StatusOK, events)
+	writeJSON(w, http.StatusOK, events)
 }
 
 func (h *InnovationHandler) SubmitProject(w http.ResponseWriter, r *http.Request) {
 	eventID := chi.URLParam(r, "eventId")
 	_ = eventID // To be used if we validate event bounds
 
-	claims, ok := r.Context().Value(middleware.UserClaimsKey).(*middleware.Claims)
+	id, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -79,34 +79,34 @@ func (h *InnovationHandler) SubmitProject(w http.ResponseWriter, r *http.Request
 		Description string `json:"description"`
 	}
 
-	if err := ParseJSON(r, &req); err != nil {
+	if err := parseJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
 
-	proj, err := h.svc.SubmitProject(r.Context(), req.CategoryID, claims.UserID.String(), req.Title, req.Abstract, req.Description)
+	proj, err := h.svc.SubmitProject(r.Context(), req.CategoryID, id.String(), req.Title, req.Abstract, req.Description)
 	if err != nil {
 		http.Error(w, "Failed to submit project", http.StatusInternalServerError)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, proj)
+	writeJSON(w, http.StatusCreated, proj)
 }
 
 func (h *InnovationHandler) GetJudgingAssignments(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value(middleware.UserClaimsKey).(*middleware.Claims)
+	id, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	projects, err := h.svc.GetJudgingAssignments(r.Context(), claims.UserID.String())
+	projects, err := h.svc.GetJudgingAssignments(r.Context(), id.String())
 	if err != nil {
 		http.Error(w, "Failed to fetch assignments", http.StatusInternalServerError)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, projects)
+	writeJSON(w, http.StatusOK, projects)
 }
 
 func (h *InnovationHandler) SubmitScores(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (h *InnovationHandler) SubmitScores(w http.ResponseWriter, r *http.Request)
 		Scores []model.JudgingScore `json:"scores"`
 	}
 
-	if err := ParseJSON(r, &req); err != nil {
+	if err := parseJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
@@ -127,5 +127,5 @@ func (h *InnovationHandler) SubmitScores(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Scores successfully submitted"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Scores successfully submitted"})
 }

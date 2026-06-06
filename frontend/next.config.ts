@@ -1,22 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  output: process.env.NODE_ENV === "production" ? "export" : undefined,
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-      },
-    ],
+    unoptimized: true,
   },
   async rewrites() {
     return [
       {
-        source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://go-api:8080/api/v1"}/:path*`,
+        source: "/api/v1/:path*",
+        destination: "http://localhost:8080/api/v1/:path*",
       },
     ];
   },

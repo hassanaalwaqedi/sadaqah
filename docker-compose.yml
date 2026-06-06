@@ -81,6 +81,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8080:8080"
     networks:
       - backend
     restart: unless-stopped

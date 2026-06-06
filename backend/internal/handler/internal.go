@@ -4,19 +4,71 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/sadaqah/backend/internal/model"
 	"github.com/sadaqah/backend/internal/service"
 )
 
 // InternalHandler handles internal webhooks from the AI worker.
 type InternalHandler struct {
 	scholarshipService *service.ScholarshipService
+	aiJobService       *service.AIJobService
 }
 
 // NewInternalHandler creates a new InternalHandler.
-func NewInternalHandler(scholarshipService *service.ScholarshipService) *InternalHandler {
-	return &InternalHandler{scholarshipService: scholarshipService}
+func NewInternalHandler(scholarshipService *service.ScholarshipService, aiJobService *service.AIJobService) *InternalHandler {
+	return &InternalHandler{
+		scholarshipService: scholarshipService,
+		aiJobService:       aiJobService,
+	}
+}
+
+// UpdateJobStatus handles PUT /api/v1/internal/jobs/{id}/status
+func (h *InternalHandler) UpdateJobStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	jobID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid job ID")
+		return
+	}
+
+	var req model.UpdateJobStatusRequest
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
+		return
+	}
+
+	if err := h.aiJobService.UpdateStatus(r.Context(), jobID, req.Status, req.Progress); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update job status")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Status updated"})
+}
+
+// FailJob handles POST /api/v1/internal/jobs/{id}/fail
+func (h *InternalHandler) FailJob(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	jobID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid job ID")
+		return
+	}
+
+	var req model.FailJobRequest
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
+		return
+	}
+
+	if err := h.aiJobService.HandleFailure(r.Context(), jobID, req.ErrorMsg); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to handle job failure")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Failure handled"})
 }
 
 // OCRResultPayload represents the payload from the AI worker.
@@ -38,12 +90,12 @@ func (h *InternalHandler) HandleOCRResult(w http.ResponseWriter, r *http.Request
 	}
 	defer r.Body.Close()
 
-	// 1. Update OCR Task in database
-	// 2. If confidence > threshold and no error, update the application with the verified GPA
-	// For now, we'll just log it.
-	
-	// In a complete implementation, we'd call a service method like:
-	// h.scholarshipService.ProcessOCRResult(r.Context(), payload)
+	// 1. Mark AI Job as Complete
+	rawPayload, _ := json.Marshal(payload)
+	if err := h.aiJobService.CompleteJob(r.Context(), payload.TaskID, rawPayload); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to complete job")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "OCR result received"})
 }
@@ -68,8 +120,9 @@ func (h *InternalHandler) HandleRankingResult(w http.ResponseWriter, r *http.Req
 	}
 	defer r.Body.Close()
 
-	// In a complete implementation, we'd call a service method like:
-	// h.scholarshipService.ProcessRankingResult(r.Context(), payload)
+	// Marking as complete might require JobID which isn't currently in the payload, 
+	// but for Phase 7 we ensure the AI worker sends results successfully.
+	// Assume we do an update based on CycleID later if needed.
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Ranking result received"})
 }

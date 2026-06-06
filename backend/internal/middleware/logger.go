@@ -68,22 +68,35 @@ func Logger(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			wrapped := newResponseWriter(w)
 
-			next.ServeHTTP(wrapped, r)
+			// Inject IP and User Agent into context for audit logging
+			ip := r.RemoteAddr
+			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+				ip = forwarded
+			}
+			ua := r.UserAgent()
+			
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, "client_ip", ip)
+			ctx = context.WithValue(ctx, "user_agent", ua)
+			r = r.WithContext(ctx)
 
-			duration := time.Since(start)
-			requestID := GetRequestID(r.Context())
+			// Wrap response writer to capture status code
+			rw := newResponseWriter(w)
 
+			next.ServeHTTP(rw, r)
+
+			// Log the request
+			reqID := GetRequestID(r.Context())
 			logger.Info("http request",
-				slog.String("request_id", requestID),
+				slog.String("request_id", reqID),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("query", r.URL.RawQuery),
-				slog.Int("status", wrapped.statusCode),
-				slog.Duration("duration", duration),
-				slog.String("ip", r.RemoteAddr),
-				slog.String("user_agent", r.UserAgent()),
+				slog.Int("status", rw.statusCode),
+				slog.Duration("duration", time.Since(start)),
+				slog.String("ip", ip),
+				slog.String("user_agent", ua),
 			)
 		})
 	}

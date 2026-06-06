@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -74,4 +75,40 @@ func (s *FileService) GeneratePresignedUploadURL(ctx context.Context, userID uui
 		ObjectName: objectName,
 		ExpiresAt:  expiresAt,
 	}, nil
+}
+
+// ValidateFileSecurity reads the first 512 bytes of a file from MinIO and validates its magic bytes.
+func (s *FileService) ValidateFileSecurity(ctx context.Context, objectName string) error {
+	obj, err := s.client.GetObject(ctx, s.cfg.Bucket, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("getting object for validation: %w", err)
+	}
+	defer obj.Close()
+
+	// Read first 512 bytes for Magic Bytes detection
+	buffer := make([]byte, 512)
+	n, err := obj.Read(buffer)
+	if err != nil && err.Error() != "EOF" {
+		return fmt.Errorf("reading object bytes: %w", err)
+	}
+
+	// Detect content type
+	detectedType := http.DetectContentType(buffer[:n])
+
+	// Allowed types
+	allowedTypes := map[string]bool{
+		"application/pdf": true,
+		"image/png":       true,
+		"image/jpeg":      true,
+		"image/webp":      true,
+		"image/gif":       true,
+	}
+
+	if !allowedTypes[detectedType] {
+		// Immediately delete malicious/invalid file
+		s.client.RemoveObject(ctx, s.cfg.Bucket, objectName, minio.RemoveObjectOptions{})
+		return fmt.Errorf("security violation: detected malicious or unsupported file type (%s)", detectedType)
+	}
+
+	return nil
 }

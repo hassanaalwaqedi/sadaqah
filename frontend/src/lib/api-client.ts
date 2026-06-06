@@ -1,28 +1,18 @@
 import axios from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+// In development, Next.js rewrites proxy /api/v1 to localhost:8080.
+// In production (Firebase static export), there is no proxy, so we hit the backend directly.
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://sadaqah-api.duckdns.org/api/v1";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true, // Crucial for sending/receiving cookies
   timeout: 30000,
 });
-
-// ── Request Interceptor: Attach access token ──
-apiClient.interceptors.request.use(
-  (config) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 
 // ── Response Interceptor: Handle token refresh ──
 let isRefreshing = false;
@@ -31,12 +21,12 @@ let failedQueue: Array<{
   reject: (reason?: unknown) => void;
 }> = [];
 
-const processQueue = (error: unknown | null, token: string | null = null) => {
+const processQueue = (error: unknown | null) => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
     } else {
-      prom.resolve(token);
+      prom.resolve(null);
     }
   });
   failedQueue = [];
@@ -49,12 +39,16 @@ apiClient.interceptors.response.use(
 
     // Only attempt refresh for 401 errors that aren't already retried
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't intercept refresh token loops
+      if (originalRequest.url === "/auth/refresh" || originalRequest.url === "/auth/login") {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         // Queue this request until refresh completes
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }).then(() => {
           return apiClient(originalRequest);
         });
       }
@@ -63,32 +57,17 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (!refreshToken) {
-          throw new Error("No refresh token");
-        }
+        // Call the refresh endpoint (it automatically sends the refresh_token cookie)
+        await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
 
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
-        });
+        processQueue(null);
 
-        const { access_token } = response.data;
-        localStorage.setItem("access_token", access_token);
-        if (response.data.refresh_token) {
-          localStorage.setItem("refresh_token", response.data.refresh_token);
-        }
-
-        processQueue(null, access_token);
-
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        // Retry the original request (it will now include the new access_token cookie)
         return apiClient(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
+        processQueue(refreshError);
 
-        // Clear tokens and redirect to login
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-
+        // If refresh fails, cookies are likely cleared or expired. Redirect to login.
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }

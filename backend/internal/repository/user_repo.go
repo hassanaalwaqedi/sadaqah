@@ -25,11 +25,11 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 // Create inserts a new user into the database.
 func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, email_verified, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO users (id, email, password_hash, provider, provider_id, avatar_url, profile_completed, email_verified, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 	_, err := r.pool.Exec(ctx, query,
-		user.ID, user.Email, user.PasswordHash, user.EmailVerified, user.IsActive, user.CreatedAt, user.UpdatedAt,
+		user.ID, user.Email, user.PasswordHash, user.Provider, user.ProviderID, user.AvatarURL, user.ProfileCompleted, user.EmailVerified, user.IsActive, user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting user: %w", err)
@@ -40,13 +40,13 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 // GetByID retrieves a user by ID.
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	query := `
-		SELECT id, email, password_hash, email_verified, is_active, last_login_at, created_at, updated_at
+		SELECT id, email, password_hash, provider, provider_id, avatar_url, profile_completed, email_verified, is_active, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL`
 
 	user := &model.User{}
 	err := r.pool.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.EmailVerified,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Provider, &user.ProviderID, &user.AvatarURL, &user.ProfileCompleted, &user.EmailVerified,
 		&user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -61,13 +61,13 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User
 // GetByEmail retrieves a user by email.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT id, email, password_hash, email_verified, is_active, last_login_at, created_at, updated_at
+		SELECT id, email, password_hash, provider, provider_id, avatar_url, profile_completed, email_verified, is_active, last_login_at, created_at, updated_at
 		FROM users
 		WHERE email = $1 AND deleted_at IS NULL`
 
 	user := &model.User{}
 	err := r.pool.QueryRow(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.EmailVerified,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Provider, &user.ProviderID, &user.AvatarURL, &user.ProfileCompleted, &user.EmailVerified,
 		&user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *UserRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
 func (r *UserRepository) List(ctx context.Context, params model.PaginationParams) ([]model.User, int64, error) {
 	countQuery := `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`
 	dataQuery := `
-		SELECT id, email, password_hash, email_verified, is_active, last_login_at, created_at, updated_at
+		SELECT id, email, password_hash, provider, provider_id, avatar_url, profile_completed, email_verified, is_active, last_login_at, created_at, updated_at
 		FROM users
 		WHERE deleted_at IS NULL`
 
@@ -144,7 +144,7 @@ func (r *UserRepository) List(ctx context.Context, params model.PaginationParams
 	for rows.Next() {
 		var u model.User
 		if err := rows.Scan(
-			&u.ID, &u.Email, &u.PasswordHash, &u.EmailVerified,
+			&u.ID, &u.Email, &u.PasswordHash, &u.Provider, &u.ProviderID, &u.AvatarURL, &u.ProfileCompleted, &u.EmailVerified,
 			&u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scanning user: %w", err)
@@ -195,12 +195,51 @@ func (r *UserRepository) GetProfile(ctx context.Context, userID uuid.UUID) (*mod
 	return p, nil
 }
 
+// CreateStudentProfile inserts a new student profile.
+func (r *UserRepository) CreateStudentProfile(ctx context.Context, p *model.StudentProfile) error {
+	query := `
+		INSERT INTO student_profiles (user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, housing_required, family_income, emergency_contact, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+
+	_, err := r.pool.Exec(ctx, query,
+		p.UserID, p.PhoneNumber, p.Nationality, p.Country, p.City, p.UniversityName, p.Faculty, p.Department, p.AcademicYear, p.GPA, p.HousingRequired, p.FamilyIncome, p.EmergencyContact, p.CreatedAt, p.UpdatedAt,
+	)
+	return err
+}
+
+// GetStudentProfile retrieves a student profile by user ID.
+func (r *UserRepository) GetStudentProfile(ctx context.Context, userID uuid.UUID) (*model.StudentProfile, error) {
+	query := `
+		SELECT user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, housing_required, family_income, emergency_contact, created_at, updated_at
+		FROM student_profiles
+		WHERE user_id = $1`
+
+	p := &model.StudentProfile{}
+	err := r.pool.QueryRow(ctx, query, userID).Scan(
+		&p.UserID, &p.PhoneNumber, &p.Nationality, &p.Country, &p.City, &p.UniversityName, &p.Faculty, &p.Department, &p.AcademicYear, &p.GPA, &p.HousingRequired, &p.FamilyIncome, &p.EmergencyContact, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("querying student profile: %w", err)
+	}
+	return p, nil
+}
+
+// SetProfileCompleted marks a user's profile as completed.
+func (r *UserRepository) SetProfileCompleted(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE users SET profile_completed = true, updated_at = $1 WHERE id = $2`
+	_, err := r.pool.Exec(ctx, query, time.Now().UTC(), userID)
+	return err
+}
+
 // ── Roles ──
 
 // GetUserRoles retrieves all roles for a user.
 func (r *UserRepository) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]model.Role, error) {
 	query := `
-		SELECT r.id, r.name, r.display_name_en, r.display_name_ar, r.description, r.is_system, r.created_at
+		SELECT r.id, r.name, r.display_name_en, r.display_name_ar, r.description, r.is_system, r.is_active, r.created_at, r.updated_at
 		FROM roles r
 		JOIN user_roles ur ON r.id = ur.role_id
 		WHERE ur.user_id = $1`
@@ -216,7 +255,7 @@ func (r *UserRepository) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]
 		var role model.Role
 		if err := rows.Scan(
 			&role.ID, &role.Name, &role.DisplayNameEN, &role.DisplayNameAR,
-			&role.Description, &role.IsSystem, &role.CreatedAt,
+			&role.Description, &role.IsSystem, &role.IsActive, &role.CreatedAt, &role.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning role: %w", err)
 		}
@@ -264,13 +303,13 @@ func (r *UserRepository) AssignRole(ctx context.Context, userID, roleID, assigne
 // GetRoleByName retrieves a role by its name.
 func (r *UserRepository) GetRoleByName(ctx context.Context, name string) (*model.Role, error) {
 	query := `
-		SELECT id, name, display_name_en, display_name_ar, description, is_system, created_at
+		SELECT id, name, display_name_en, display_name_ar, description, is_system, is_active, created_at, updated_at
 		FROM roles WHERE name = $1`
 
 	role := &model.Role{}
 	err := r.pool.QueryRow(ctx, query, name).Scan(
 		&role.ID, &role.Name, &role.DisplayNameEN, &role.DisplayNameAR,
-		&role.Description, &role.IsSystem, &role.CreatedAt,
+		&role.Description, &role.IsSystem, &role.IsActive, &role.CreatedAt, &role.UpdatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -359,19 +398,8 @@ func (r *UserRepository) CountRecentFailedAttempts(ctx context.Context, email st
 }
 
 // ── Audit Log ──
+// Audit logging has been moved to audit_repo.go
 
-// CreateAuditLog inserts an audit log entry.
-func (r *UserRepository) CreateAuditLog(ctx context.Context, log *model.AuditLog) error {
-	query := `
-		INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-
-	_, err := r.pool.Exec(ctx, query,
-		log.ID, log.UserID, log.Action, log.EntityType, log.EntityID,
-		log.OldValues, log.NewValues, log.IPAddress, log.UserAgent, log.CreatedAt,
-	)
-	return err
-}
 
 // EmailExists checks if an email is already registered.
 func (r *UserRepository) EmailExists(ctx context.Context, email string) (bool, error) {
@@ -386,4 +414,108 @@ func (r *UserRepository) SetEmailVerified(ctx context.Context, userID uuid.UUID)
 	query := `UPDATE users SET email_verified = true, updated_at = $1 WHERE id = $2`
 	_, err := r.pool.Exec(ctx, query, time.Now().UTC(), userID)
 	return err
+}
+
+// ── Admin User Management ──
+
+// RemoveRole removes a specific role from a user.
+func (r *UserRepository) RemoveRole(ctx context.Context, userID, roleID uuid.UUID) error {
+	query := `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2`
+	_, err := r.pool.Exec(ctx, query, userID, roleID)
+	return err
+}
+
+// SuspendUser sets a user's is_active to false.
+func (r *UserRepository) SuspendUser(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE users SET is_active = false, updated_at = $1 WHERE id = $2`
+	_, err := r.pool.Exec(ctx, query, time.Now().UTC(), userID)
+	return err
+}
+
+// ReactivateUser sets a user's is_active to true.
+func (r *UserRepository) ReactivateUser(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE users SET is_active = true, updated_at = $1 WHERE id = $2`
+	_, err := r.pool.Exec(ctx, query, time.Now().UTC(), userID)
+	return err
+}
+
+// ListWithFilters returns users filtered by role, status, and search term.
+func (r *UserRepository) ListWithFilters(ctx context.Context, filters model.UserFilterParams) ([]model.User, int64, error) {
+	baseWhere := " WHERE u.deleted_at IS NULL"
+	args := []interface{}{}
+	argIdx := 1
+
+	if filters.RoleFilter != "" {
+		baseWhere += fmt.Sprintf(" AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles rl ON rl.id = ur.role_id WHERE ur.user_id = u.id AND rl.name = $%d)", argIdx)
+		args = append(args, filters.RoleFilter)
+		argIdx++
+	}
+
+	if filters.StatusFilter == "active" {
+		baseWhere += " AND u.is_active = true"
+	} else if filters.StatusFilter == "suspended" {
+		baseWhere += " AND u.is_active = false"
+	}
+
+	countQuery := `SELECT COUNT(*) FROM users u` + baseWhere
+	var total int64
+	err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	dataQuery := `SELECT u.id, u.email, u.email_verified, u.is_active, u.profile_completed, u.created_at, u.updated_at FROM users u` + baseWhere
+	dataQuery += fmt.Sprintf(" ORDER BY u.created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, filters.PageSize, (filters.Page-1)*filters.PageSize)
+
+	rows, err := r.pool.Query(ctx, dataQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.EmailVerified, &u.IsActive, &u.ProfileCompleted, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		users = append(users, u)
+	}
+
+	return users, total, nil
+}
+
+// GetLoginHistory returns login attempts for a user by email.
+func (r *UserRepository) GetLoginHistory(ctx context.Context, userID uuid.UUID, limit int) ([]model.LoginAttempt, error) {
+	// First get user email
+	var email string
+	err := r.pool.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&email)
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT id, email, ip_address, success, attempted_at, user_agent
+		FROM login_attempts
+		WHERE email = $1
+		ORDER BY attempted_at DESC
+		LIMIT $2`
+
+	rows, err := r.pool.Query(ctx, query, email, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var attempts []model.LoginAttempt
+	for rows.Next() {
+		var a model.LoginAttempt
+		if err := rows.Scan(&a.ID, &a.Email, &a.IPAddress, &a.Success, &a.AttemptedAt, &a.UserAgent); err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, a)
+	}
+
+	return attempts, nil
 }

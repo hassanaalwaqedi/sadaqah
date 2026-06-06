@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,7 @@ const navigation = [
   {
     section: "الرئيسية",
     items: [
-      { name: "لوحة التحكم", href: "/", icon: "home", roles: [] },
+      { name: "لوحة التحكم", href: "/portal", icon: "home", roles: [], permissions: [] },
     ],
   },
   {
@@ -17,39 +18,45 @@ const navigation = [
     items: [
       {
         name: "المنح الدراسية",
-        href: "/scholarships",
+        href: "/portal/scholarships",
         icon: "graduation",
-        roles: ["super_admin", "admin", "scholarship_admin", "student", "judge"],
+        roles: ["super_admin", "admin", "scholarship_admin", "scholarship_manager", "student", "judge"],
+        permissions: ["scholarships.read"],
       },
       {
         name: "السكن الطلابي (الخريطة)",
-        href: "/housing/map",
+        href: "/portal/housing/map",
         icon: "building",
-        roles: ["super_admin", "admin", "housing_admin", "student"],
+        roles: ["super_admin", "admin", "housing_admin", "housing_manager", "student"],
+        permissions: ["housing.read"],
       },
       {
         name: "الفواتير والإيجار",
-        href: "/housing/invoices",
+        href: "/portal/housing/invoices",
         icon: "banknotes",
-        roles: ["super_admin", "admin", "housing_admin", "student"],
+        roles: ["super_admin", "admin", "housing_admin", "housing_manager", "student"],
+        permissions: ["housing.read"],
       },
       {
         name: "مسابقات الابتكار",
-        href: "/innovation",
+        href: "/portal/innovation",
         icon: "lightbulb",
-        roles: ["super_admin", "admin", "student"],
+        roles: ["super_admin", "admin", "innovation_manager", "student"],
+        permissions: ["innovation.read"],
       },
       {
         name: "إدارة الابتكار",
-        href: "/admin/innovation",
+        href: "/portal/admin/innovation",
         icon: "cog",
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin", "admin", "innovation_manager"],
+        permissions: ["innovation.manage"],
       },
       {
         name: "تقييم المشاريع",
-        href: "/judges/innovation",
+        href: "/portal/judges/innovation",
         icon: "clipboardCheck",
         roles: ["super_admin", "judge"],
+        permissions: ["innovation.score"],
       },
     ],
   },
@@ -58,15 +65,17 @@ const navigation = [
     items: [
       {
         name: "التبرعات",
-        href: "/donations",
+        href: "/portal/donations",
         icon: "heart",
-        roles: ["super_admin", "admin", "donor"],
+        roles: ["super_admin", "admin", "donor", "financial_officer"],
+        permissions: ["donations.read"],
       },
       {
         name: "المالية",
-        href: "/finance",
+        href: "/portal/finance",
         icon: "banknotes",
-        roles: ["super_admin", "admin", "auditor"],
+        roles: ["super_admin", "admin", "auditor", "financial_officer"],
+        permissions: ["finance.read"],
       },
     ],
   },
@@ -75,15 +84,17 @@ const navigation = [
     items: [
       {
         name: "البحث العلمي",
-        href: "/research",
+        href: "/portal/research",
         icon: "academic",
         roles: ["super_admin", "admin", "researcher"],
+        permissions: ["research.read"],
       },
       {
         name: "الجرد والأصول",
-        href: "/inventory",
+        href: "/portal/inventory",
         icon: "cube",
         roles: ["super_admin", "admin"],
+        permissions: ["inventory.read"],
       },
     ],
   },
@@ -92,15 +103,31 @@ const navigation = [
     items: [
       {
         name: "التقارير",
-        href: "/reports",
+        href: "/portal/reports",
         icon: "chart",
         roles: ["super_admin", "admin", "scholarship_admin", "housing_admin", "auditor"],
+        permissions: ["reports.read"],
       },
       {
-        name: "الإدارة",
-        href: "/admin/users",
+        name: "إدارة المستخدمين",
+        href: "/portal/admin/users",
         icon: "cog",
+        roles: ["super_admin", "admin", "org_admin"],
+        permissions: ["users.read"],
+      },
+      {
+        name: "إدارة الأدوار",
+        href: "/portal/admin/roles",
+        icon: "shield",
         roles: ["super_admin", "admin"],
+        permissions: ["roles.read"],
+      },
+      {
+        name: "سجل المراجعة",
+        href: "/portal/admin/audit",
+        icon: "document",
+        roles: ["super_admin", "admin"],
+        permissions: ["admin.audit"],
       },
     ],
   },
@@ -108,7 +135,7 @@ const navigation = [
 
 // Simple icon mapping (using inline SVGs instead of importing a library)
 function NavIcon({ name, className }: { name: string; className?: string }) {
-  const icons: Record<string, JSX.Element> = {
+  const icons: Record<string, React.ReactNode> = {
     home: (
       <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
@@ -165,6 +192,16 @@ function NavIcon({ name, className }: { name: string; className?: string }) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" />
       </svg>
     ),
+    shield: (
+      <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+      </svg>
+    ),
+    document: (
+      <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+      </svg>
+    ),
   };
 
   return icons[name] || <div className={cn("w-5 h-5", className)} />;
@@ -172,31 +209,37 @@ function NavIcon({ name, className }: { name: string; className?: string }) {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, hasAnyRole } = useAuth();
+  const { user, hasAnyRole, hasAnyPermission } = useAuth();
 
   return (
     <aside className="fixed inset-y-0 start-0 z-40 w-64 bg-white dark:bg-surface-900 border-e border-surface-200 dark:border-surface-700 flex flex-col">
       {/* Logo */}
       <div className="h-16 flex items-center gap-3 px-6 border-b border-surface-200 dark:border-surface-700">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-600 to-primary-500 flex items-center justify-center shadow-md shadow-primary-500/20">
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
-          </svg>
+        <div className="relative w-10 h-10 flex-shrink-0">
+          <Image src="/brand/logo.png" alt="جمعية الصداقة والتعاون" fill className="object-contain" priority />
         </div>
         <div>
           <h2 className="text-sm font-bold text-surface-900 dark:text-surface-50">الصداقة والتعاون</h2>
-          <p className="text-[10px] text-surface-400">Sadaqah Platform</p>
+          <p className="text-[10px] text-surface-400">جمعية الصداقة والتعاون</p>
         </div>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
         {navigation.map((section) => {
-          // Filter items by user role
+          // Filter items by user role OR permission
           const visibleItems = section.items.filter(
-            (item) =>
-              item.roles.length === 0 ||
-              hasAnyRole("super_admin", ...item.roles)
+            (item) => {
+              // No restrictions = show to everyone
+              if (item.roles.length === 0 && (!item.permissions || item.permissions.length === 0)) return true;
+              // Super admin sees everything
+              if (hasAnyRole("super_admin")) return true;
+              // Check roles
+              if (item.roles.length > 0 && hasAnyRole(...item.roles)) return true;
+              // Check permissions
+              if (item.permissions && item.permissions.length > 0 && hasAnyPermission(...item.permissions)) return true;
+              return false;
+            }
           );
 
           if (visibleItems.length === 0) return null;

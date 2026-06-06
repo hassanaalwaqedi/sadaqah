@@ -13,4 +13,5 @@ type PresignedURLResponse struct {
 type PresignedURLRequest struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
+	FileSize    int64  `json:"file_size,omitempty"`
 }

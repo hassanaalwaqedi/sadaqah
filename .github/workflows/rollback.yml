@@ -1,0 +1,55 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'The short commit SHA to rollback to (e.g. abc1234)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  rollback:
+    name: Rollback to specific SHA
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Execute rollback over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ~/backend
+            
+            echo "Rolling back to commit SHA: ${{ github.event.inputs.commit_sha }}"
+            
+            # Temporary replace latest with the specific sha in a running command
+            export API_IMAGE="${{ env.IMAGE_PREFIX }}-api:sha-${{ github.event.inputs.commit_sha }}"
+            export WEB_IMAGE="${{ env.IMAGE_PREFIX }}-web:sha-${{ github.event.inputs.commit_sha }}"
+            export AI_IMAGE="${{ env.IMAGE_PREFIX }}-ai-worker:sha-${{ github.event.inputs.commit_sha }}"
+            
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull specific images
+            docker pull $API_IMAGE
+            docker pull $WEB_IMAGE
+            docker pull $AI_IMAGE
+            
+            # Update docker-compose running images dynamically without modifying the compose file directly
+            # Or assume docker-compose.yml uses environment variables:
+            # image: ${API_IMAGE:-ghcr.io/sadaqah/backend-api:latest}
+            
+            # Create a .env.rollback file to override images
+            echo "API_IMAGE=$API_IMAGE" > .env.rollback
+            echo "WEB_IMAGE=$WEB_IMAGE" >> .env.rollback
+            echo "AI_IMAGE=$AI_IMAGE" >> .env.rollback
+            
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .env.rollback up -d
+            
+            echo "Rollback complete."

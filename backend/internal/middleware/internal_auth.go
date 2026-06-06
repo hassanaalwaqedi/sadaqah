@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/sadaqah/backend/internal/config"
-	"github.com/sadaqah/backend/internal/handler"
 )
 
 // InternalAPIKey requires a valid X-Internal-API-Key header.

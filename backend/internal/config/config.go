@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,11 +26,12 @@ type AppConfig struct {
 }
 
 type APIConfig struct {
-	Host         string
-	Port         int
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
+	Host           string
+	Port           int
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	IdleTimeout    time.Duration
+	AllowedOrigins []string
 }
 
 type DBConfig struct {
@@ -82,11 +84,12 @@ func Load() (*Config, error) {
 			Name: getEnv("APP_NAME", "sadaqah"),
 		},
 		API: APIConfig{
-			Host:         getEnv("API_HOST", "0.0.0.0"),
-			Port:         getEnvInt("API_PORT", 8080),
-			ReadTimeout:  getEnvDuration("API_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout: getEnvDuration("API_WRITE_TIMEOUT", 15*time.Second),
-			IdleTimeout:  getEnvDuration("API_IDLE_TIMEOUT", 60*time.Second),
+			Host:           getEnv("API_HOST", "0.0.0.0"),
+			Port:           getEnvInt("API_PORT", 8080),
+			ReadTimeout:    getEnvDuration("API_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout:   getEnvDuration("API_WRITE_TIMEOUT", 15*time.Second),
+			IdleTimeout:    getEnvDuration("API_IDLE_TIMEOUT", 60*time.Second),
+			AllowedOrigins: getEnvStringSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost", "https://sadaqah-3caee.web.app"}),
 		},
 		DB: DBConfig{
 			URL:      getEnv("DATABASE_URL", "postgres://sadaqah:sadaqah_dev_password@localhost:5432/sadaqah?sslmode=disable"),
@@ -162,6 +165,23 @@ func (c *AppConfig) IsProduction() bool {
 func getEnv(key, fallback string) string {
 	if val, ok := os.LookupEnv(key); ok {
 		return val
+	}
+	return fallback
+}
+
+func getEnvStringSlice(key string, fallback []string) []string {
+	if value, exists := os.LookupEnv(key); exists {
+		// Split by comma
+		var result []string
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
 	}
 	return fallback
 }

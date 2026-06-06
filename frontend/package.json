@@ -7,15 +7,18 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "jest"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.9.0",
     "@tanstack/react-query": "^5.62.0",
     "axios": "^1.7.0",
     "browserslist": "^4.28.2",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
+    "firebase": "^12.14.0",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
@@ -28,14 +31,21 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.5.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
+    "ts-node": "^10.9.2",
     "typescript": "^5.7.0"
   }
 }

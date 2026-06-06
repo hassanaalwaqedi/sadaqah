@@ -87,6 +87,23 @@ func (r *ScholarshipRepository) ListCycles(ctx context.Context, params model.Pag
 	return cycles, total, nil
 }
 
+func (r *ScholarshipRepository) GetApplicationByID(ctx context.Context, id uuid.UUID) (*model.ScholarshipApplication, error) {
+	query := `
+		SELECT id, cycle_id, applicant_id, status, submitted_at, family_income, family_size, created_at, updated_at
+		FROM scholarship_applications
+		WHERE id = $1
+	`
+	var app model.ScholarshipApplication
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&app.ID, &app.CycleID, &app.ApplicantID, &app.Status, &app.SubmittedAt,
+		&app.FamilyIncome, &app.FamilySize, &app.CreatedAt, &app.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get application: %w", err)
+	}
+	return &app, nil
+}
+
 // CreateApplication creates a new student application.
 func (r *ScholarshipRepository) CreateApplication(ctx context.Context, app *model.ScholarshipApplication) error {
 	query := `

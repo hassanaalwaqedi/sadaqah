@@ -1,8 +1,22 @@
+"use client";
+
+import { useAuth } from "@/providers/auth-provider";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push("/portal");
+    }
+  }, [isAuthenticated, isLoading, router]);
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-surface-950 dark:via-surface-900 dark:to-primary-950 px-4">
       {/* Background decoration */}

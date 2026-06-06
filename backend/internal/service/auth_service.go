@@ -1,12 +1,16 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -31,10 +35,11 @@ var (
 
 // AuthService handles authentication business logic.
 type AuthService struct {
-	userRepo *repository.UserRepository
-	rdb      *redis.Client
-	cfg      config.JWTConfig
-	logger   *slog.Logger
+	userRepo     *repository.UserRepository
+	rdb          *redis.Client
+	cfg          config.JWTConfig
+	emailService *EmailService
+	logger       *slog.Logger
 }
 
 // NewAuthService creates a new AuthService.
@@ -42,13 +47,15 @@ func NewAuthService(
 	userRepo *repository.UserRepository,
 	rdb *redis.Client,
 	cfg config.JWTConfig,
+	emailService *EmailService,
 	logger *slog.Logger,
 ) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		rdb:      rdb,
-		cfg:      cfg,
-		logger:   logger,
+		userRepo:     userRepo,
+		rdb:          rdb,
+		cfg:          cfg,
+		emailService: emailService,
+		logger:       logger,
 	}
 }
 
@@ -75,11 +82,13 @@ func (s *AuthService) Register(ctx context.Context, req model.RegisterRequest) (
 	now := time.Now().UTC()
 	userID := uuid.New()
 
+	hashStr := string(hash)
+
 	// Create user
 	user := &model.User{
 		ID:            userID,
 		Email:         email,
-		PasswordHash:  string(hash),
+		PasswordHash:  &hashStr,
 		EmailVerified: false,
 		IsActive:      true,
 		CreatedAt:     now,
@@ -120,6 +129,15 @@ func (s *AuthService) Register(ctx context.Context, req model.RegisterRequest) (
 		}
 	}
 
+	// Send Welcome Email
+	if s.emailService != nil {
+		name := req.FirstNameEN
+		if name == "" {
+			name = "User"
+		}
+		s.emailService.SendWelcomeEmail(email, name)
+	}
+
 	// Generate tokens
 	roleNames, _ := s.userRepo.GetUserRoleNames(ctx, userID)
 	return s.generateTokenResponse(ctx, user, profile, roleNames, "", "")
@@ -148,8 +166,12 @@ func (s *AuthService) Login(ctx context.Context, req model.LoginRequest, ip, use
 		return nil, ErrInvalidCredentials
 	}
 
-	// Check password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	// Check password (users from OAuth might not have a password hash)
+	if user.PasswordHash == nil {
+		s.recordLoginAttempt(ctx, email, ip, userAgent, false)
+		return nil, ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
 		s.recordLoginAttempt(ctx, email, ip, userAgent, false)
 		return nil, ErrInvalidCredentials
 	}
@@ -164,6 +186,130 @@ func (s *AuthService) Login(ctx context.Context, req model.LoginRequest, ip, use
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
 
 	// Get profile and roles
+	profile, _ := s.userRepo.GetProfile(ctx, user.ID)
+	roleNames, _ := s.userRepo.GetUserRoleNames(ctx, user.ID)
+
+	return s.generateTokenResponse(ctx, user, profile, roleNames, ip, userAgent)
+}
+
+// GoogleLogin verifies a Firebase ID token and logs the user in (or registers them if new).
+func (s *AuthService) GoogleLogin(ctx context.Context, idToken, ip, userAgent string) (*model.TokenResponse, error) {
+	// Firebase ID tokens are JWTs. We verify them using Google's secure token verification endpoint.
+	// This endpoint accepts Firebase ID tokens (unlike oauth2.googleapis.com/tokeninfo which only accepts OAuth tokens).
+	client := &http.Client{Timeout: 10 * time.Second}
+	verifyURL := fmt.Sprintf("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=AIzaSyATw5_qnrHqD63kd0MDFoZ2fM72TkoGZxU")
+
+	payload := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req, err := http.NewRequestWithContext(ctx, "POST", verifyURL, strings.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verify request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[DEBUG] failed to call firebase verify: %v\n", err)
+		return nil, fmt.Errorf("failed to call firebase verify: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("[DEBUG] firebase verify returned status %d. Body: %s\n", resp.StatusCode, string(bodyBytes))
+		return nil, errors.New("invalid firebase id token")
+	}
+
+	var result struct {
+		Users []struct {
+			LocalID       string `json:"localId"`
+			Email         string `json:"email"`
+			EmailVerified bool   `json:"emailVerified"`
+			DisplayName   string `json:"displayName"`
+			PhotoURL      string `json:"photoUrl"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode firebase response: %w", err)
+	}
+
+	if len(result.Users) == 0 || result.Users[0].Email == "" {
+		return nil, errors.New("firebase token does not contain a valid user")
+	}
+
+	firebaseUser := result.Users[0]
+	email := strings.ToLower(strings.TrimSpace(firebaseUser.Email))
+
+	// Extract first/last name from display name
+	givenName := firebaseUser.DisplayName
+	familyName := ""
+	if parts := strings.SplitN(firebaseUser.DisplayName, " ", 2); len(parts) == 2 {
+		givenName = parts[0]
+		familyName = parts[1]
+	}
+
+	// Find existing user by email
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("checking user by email: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	if user == nil {
+		// Create new user via Google
+		userID := uuid.New()
+		providerID := firebaseUser.LocalID
+		avatarURL := firebaseUser.PhotoURL
+		user = &model.User{
+			ID:               userID,
+			Email:            email,
+			PasswordHash:     nil, // No password for OAuth
+			Provider:         "GOOGLE",
+			ProviderID:       &providerID,
+			AvatarURL:        &avatarURL,
+			EmailVerified:    firebaseUser.EmailVerified,
+			IsActive:         true,
+			ProfileCompleted: false, // Must complete onboarding wizard
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+
+		if err := s.userRepo.Create(ctx, user); err != nil {
+			return nil, fmt.Errorf("creating google user: %w", err)
+		}
+
+		// Create basic empty profile
+		profile := &model.UserProfile{
+			UserID:      userID,
+			FirstNameEN: givenName,
+			LastNameEN:  familyName,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if profile.FirstNameEN == "" {
+			profile.FirstNameEN = firebaseUser.DisplayName // fallback
+		}
+
+		_ = s.userRepo.CreateProfile(ctx, profile)
+
+		// Assign default "student" role
+		studentRole, err := s.userRepo.GetRoleByName(ctx, "student")
+		if err == nil && studentRole != nil {
+			_ = s.userRepo.AssignRole(ctx, userID, studentRole.ID, userID)
+		}
+	} else {
+		// Existing user logging in with Google
+		if !user.IsActive {
+			return nil, ErrAccountInactive
+		}
+	}
+
+	// Record successful login
+	s.recordLoginAttempt(ctx, email, ip, userAgent, true)
+	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
+
 	profile, _ := s.userRepo.GetProfile(ctx, user.ID)
 	roleNames, _ := s.userRepo.GetUserRoleNames(ctx, user.ID)
 
@@ -244,9 +390,9 @@ func (s *AuthService) generateTokenResponse(
 	roles []string,
 	ip, userAgent string,
 ) (*model.TokenResponse, error) {
-	// Generate access token
+	// Generate access token (pass ProfileCompleted)
 	accessToken, err := middleware.GenerateAccessToken(
-		user.ID, user.Email, roles, s.cfg.AccessSecret, s.cfg.AccessExpiry,
+		user.ID, user.Email, roles, user.ProfileCompleted, s.cfg.AccessSecret, s.cfg.AccessExpiry,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
@@ -291,6 +437,7 @@ func (s *AuthService) generateTokenResponse(
 
 	return &model.TokenResponse{
 		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    int64(s.cfg.AccessExpiry.Seconds()),
 		User:         userWithProfile,

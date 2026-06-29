@@ -102,7 +102,7 @@ func (h *UserHandler) AssignRole(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Role assigned successfully"})
 }
 
-// RemoveRole handles DELETE /api/v1/admin/users/{id}/roles/{roleId}
+// RemoveRole handles DELETE /api/v1/admin/users/{id}/roles/{roleName}
 func (h *UserHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
 	userIDStr := chi.URLParam(r, "id")
 	targetUserID, err := uuid.Parse(userIDStr)
@@ -111,10 +111,9 @@ func (h *UserHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roleIDStr := chi.URLParam(r, "roleId")
-	roleID, err := uuid.Parse(roleIDStr)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_ID", "Invalid role ID format")
+	roleName := chi.URLParam(r, "roleName")
+	if roleName == "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ROLE", "Role name is required")
 		return
 	}
 
@@ -124,7 +123,7 @@ func (h *UserHandler) RemoveRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.userService.RemoveRole(r.Context(), targetUserID, roleID, adminID); err != nil {
+	if err := h.userService.RemoveRole(r.Context(), targetUserID, roleName, adminID); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to remove role")
 		return
 	}

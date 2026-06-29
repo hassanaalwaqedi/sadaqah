@@ -1,0 +1,1 @@
+-- Intentionally left blank as feature deletion is not meant to be rolled back locally.

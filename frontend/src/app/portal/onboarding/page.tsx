@@ -4,241 +4,274 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { apiClient } from "@/lib/api-client";
-import { UserCircleIcon, AcademicCapIcon, HomeModernIcon, CheckBadgeIcon } from "@heroicons/react/24/outline";
+import { 
+  UserCircleIcon, 
+  AcademicCapIcon, 
+  BanknotesIcon,
+  HeartIcon,
+  BeakerIcon,
+  LightBulbIcon,
+  ScaleIcon,
+  DocumentCheckIcon,
+  BriefcaseIcon,
+  CheckBadgeIcon
+} from "@heroicons/react/24/outline";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-hot-toast";
 
-const onboardingSchema = z.object({
-  phone_number: z.string().min(5, "Phone number is required"),
+const identitySchema = z.object({
+  first_name_en: z.string().min(2, "First Name (EN) is required"),
+  last_name_en: z.string().min(2, "Last Name (EN) is required"),
+  phone: z.string().min(5, "Phone number is required"),
   nationality: z.string().min(2, "Nationality is required"),
   country: z.string().min(2, "Country is required"),
   city: z.string().min(2, "City is required"),
-  university_name: z.string().min(2, "University name is required"),
-  faculty: z.string().min(2, "Faculty is required"),
-  department: z.string().min(2, "Department is required"),
-  academic_year: z.coerce.number().min(1).max(7),
-  gpa: z.coerce.number().min(0, "GPA must be at least 0").max(4.0, "GPA cannot exceed 4.0"),
-  housing_required: z.boolean(),
-  family_income: z.coerce.number().min(0, "Income cannot be negative"),
-  emergency_contact: z.string().min(5, "Emergency contact is required"),
+  gender: z.enum(["male", "female"]),
 });
 
-type OnboardingFormValues = z.infer<typeof onboardingSchema>;
+type IdentityFormValues = z.infer<typeof identitySchema>;
+
+const ROLES = [
+  { id: "student", label: "Student", icon: AcademicCapIcon, description: "I am a student at a university." },
+  { id: "scholarship", label: "Scholarship Applicant", icon: AcademicCapIcon, description: "I want to apply for scholarships." },
+  { id: "donor", label: "Donor", icon: BanknotesIcon, description: "I want to donate and support causes." },
+  { id: "volunteer", label: "Volunteer", icon: HeartIcon, description: "I want to volunteer my time." },
+  { id: "researcher", label: "Researcher", icon: BeakerIcon, description: "I am involved in academic research." },
+  { id: "innovation", label: "Innovation Participant", icon: LightBulbIcon, description: "I want to participate in innovation competitions." },
+];
 
 export default function OnboardingPage() {
-  const router = useRouter();
-  const { refreshUser } = useAuth();
-  
   const [step, setStep] = useState(1);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
+  const { user, refreshUser } = useAuth();
 
-  const {
-    register,
-    handleSubmit,
-    trigger,
-    getValues,
-    formState: { errors, isSubmitting },
-  } = useForm<OnboardingFormValues>({
-    resolver: zodResolver(onboardingSchema),
+  const { register, handleSubmit, formState: { errors } } = useForm<IdentityFormValues>({
+    resolver: zodResolver(identitySchema),
     defaultValues: {
-      phone_number: "",
+      first_name_en: "",
+      last_name_en: "",
+      phone: "",
       nationality: "",
       country: "",
       city: "",
-      university_name: "",
-      faculty: "",
-      department: "",
-      academic_year: 1,
-      gpa: 0,
-      housing_required: false,
-      family_income: 0,
-      emergency_contact: "",
-    },
-    mode: "onTouched",
+      gender: "male"
+    }
   });
 
-  const nextStep = async () => {
-    let fieldsToValidate: any[] = [];
-    if (step === 1) fieldsToValidate = ["phone_number", "nationality", "country", "city"];
-    if (step === 2) fieldsToValidate = ["university_name", "faculty", "department", "academic_year", "gpa"];
-    if (step === 3) fieldsToValidate = ["family_income", "emergency_contact", "housing_required"];
-
-    const isStepValid = await trigger(fieldsToValidate);
-    if (isStepValid) {
-        setStep(s => s + 1);
-    }
-  };
-
-  const prevStep = () => {
-    setStep(s => s - 1);
-  };
-
-  const onSubmit = async (data: OnboardingFormValues) => {
+  const onSubmitIdentity = async (data: IdentityFormValues) => {
+    setIsSubmitting(true);
     try {
-      await apiClient.post("/onboarding", data);
-      await refreshUser(); // Update auth context so profile_completed is true
-      toast.success("Profile completed successfully");
-      router.push("/");
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || "Failed to submit profile. Please try again.");
+      await apiClient.post("/onboarding/identity", data);
+      setStep(2);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save identity");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const StepIndicator = ({ current, target, label, icon: Icon }: { current: number, target: number, label: string, icon: any }) => (
-    <div className={`flex flex-col items-center gap-2 ${current >= target ? 'text-primary-600' : 'text-surface-400'}`}>
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
-        current >= target ? 'bg-primary-50 border-primary-500 shadow-lg shadow-primary-500/20 dark:bg-primary-900/30' : 'border-surface-200 dark:border-surface-700'
-      }`}>
-        <Icon className="w-5 h-5" />
-      </div>
-      <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
-    </div>
-  );
+  const toggleRole = (roleId: string) => {
+    if (selectedRoles.includes(roleId)) {
+      setSelectedRoles(selectedRoles.filter(r => r !== roleId));
+    } else {
+      setSelectedRoles([...selectedRoles, roleId]);
+    }
+  };
+
+  const onSubmitInterests = async () => {
+    if (selectedRoles.length === 0) {
+      toast.error("Please select at least one role");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await apiClient.post("/onboarding/interests", { interests: selectedRoles });
+      toast.success("Profile completed successfully!");
+      await apiClient.post("/auth/refresh");
+      await refreshUser();
+      router.push("/portal");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save interests");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <div className="max-w-3xl mx-auto py-12 px-4">
-      <div className="text-center mb-10">
-        <h1 className="text-3xl font-bold gradient-text mb-2">Welcome to Sadaqah</h1>
-        <p className="text-surface-600 dark:text-surface-400">Please complete your profile before applying for scholarships.</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-3xl">
+        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
+          Complete Your Profile
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Step {step} of 2
+        </p>
       </div>
 
-      <div className="flex justify-between items-center mb-12 relative">
-        <div className="absolute top-5 left-10 right-10 h-0.5 bg-surface-200 dark:bg-surface-700 -z-10"></div>
-        <div 
-          className="absolute top-5 left-10 h-0.5 bg-primary-500 -z-10 transition-all duration-500"
-          style={{ width: `${((step - 1) / 3) * 100}%` }}
-        ></div>
-        
-        <StepIndicator current={step} target={1} label="Personal" icon={UserCircleIcon} />
-        <StepIndicator current={step} target={2} label="Academic" icon={AcademicCapIcon} />
-        <StepIndicator current={step} target={3} label="Details" icon={HomeModernIcon} />
-        <StepIndicator current={step} target={4} label="Review" icon={CheckBadgeIcon} />
-      </div>
-
-      <div className="glass-card p-8 shadow-xl">
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {/* STEP 1: Personal Info */}
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-3xl">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-100">
+          
           {step === 1 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <h2 className="text-xl font-bold border-b pb-2">Personal Information</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="form-label">Phone Number</label>
-                  <input type="tel" {...register("phone_number")} className={`form-input w-full ${errors.phone_number ? 'border-red-500' : ''}`} placeholder="+1 234 567 8900" />
-                  {errors.phone_number && <p className="mt-1 text-sm text-red-500">{errors.phone_number.message}</p>}
-                </div>
-                <div>
-                  <label className="form-label">Nationality</label>
-                  <input type="text" {...register("nationality")} className={`form-input w-full ${errors.nationality ? 'border-red-500' : ''}`} placeholder="e.g. Canadian" />
-                  {errors.nationality && <p className="mt-1 text-sm text-red-500">{errors.nationality.message}</p>}
-                </div>
-                <div>
-                  <label className="form-label">Country of Residence</label>
-                  <input type="text" {...register("country")} className={`form-input w-full ${errors.country ? 'border-red-500' : ''}`} placeholder="e.g. Canada" />
-                  {errors.country && <p className="mt-1 text-sm text-red-500">{errors.country.message}</p>}
-                </div>
-                <div>
-                  <label className="form-label">City</label>
-                  <input type="text" {...register("city")} className={`form-input w-full ${errors.city ? 'border-red-500' : ''}`} placeholder="e.g. Toronto" />
-                  {errors.city && <p className="mt-1 text-sm text-red-500">{errors.city.message}</p>}
-                </div>
+            <form onSubmit={handleSubmit(onSubmitIdentity)} className="space-y-6">
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                <h3 className="text-lg font-medium leading-6 text-gray-900 flex items-center">
+                  <UserCircleIcon className="h-6 w-6 mr-2 text-primary-600" />
+                  Basic Identity Information
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Please provide your fundamental contact details.
+                </p>
               </div>
-            </div>
-          )}
 
-          {/* STEP 2: Academic Info */}
-          {step === 2 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <h2 className="text-xl font-bold border-b pb-2">Academic Information</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
-                  <label className="form-label">University Name</label>
-                  <input type="text" {...register("university_name")} className={`form-input w-full ${errors.university_name ? 'border-red-500' : ''}`} placeholder="Enter full university name" />
-                  {errors.university_name && <p className="mt-1 text-sm text-red-500">{errors.university_name.message}</p>}
+              <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">First Name (English)</label>
+                  <input
+                    type="text"
+                    {...register("first_name_en")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.first_name_en && <p className="mt-1 text-sm text-red-600">{errors.first_name_en.message}</p>}
                 </div>
                 <div>
-                  <label className="form-label">Faculty</label>
-                  <input type="text" {...register("faculty")} className={`form-input w-full ${errors.faculty ? 'border-red-500' : ''}`} placeholder="e.g. Engineering" />
-                  {errors.faculty && <p className="mt-1 text-sm text-red-500">{errors.faculty.message}</p>}
+                  <label className="block text-sm font-medium text-gray-700">Last Name (English)</label>
+                  <input
+                    type="text"
+                    {...register("last_name_en")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.last_name_en && <p className="mt-1 text-sm text-red-600">{errors.last_name_en.message}</p>}
                 </div>
                 <div>
-                  <label className="form-label">Department</label>
-                  <input type="text" {...register("department")} className={`form-input w-full ${errors.department ? 'border-red-500' : ''}`} placeholder="e.g. Computer Science" />
-                  {errors.department && <p className="mt-1 text-sm text-red-500">{errors.department.message}</p>}
+                  <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                  <input
+                    type="text"
+                    {...register("phone")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>}
                 </div>
                 <div>
-                  <label className="form-label">Academic Year</label>
-                  <select {...register("academic_year")} className="form-input w-full">
-                    {[1,2,3,4,5,6,7].map(y => <option key={y} value={y}>Year {y}</option>)}
+                  <label className="block text-sm font-medium text-gray-700">Gender</label>
+                  <select
+                    {...register("gender")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
                   </select>
+                  {errors.gender && <p className="mt-1 text-sm text-red-600">{errors.gender.message}</p>}
                 </div>
                 <div>
-                  <label className="form-label">Cumulative GPA (Out of 4.0)</label>
-                  <input type="number" step="0.01" min="0" max="4.0" {...register("gpa")} className={`form-input w-full ${errors.gpa ? 'border-red-500' : ''}`} placeholder="3.85" />
-                  {errors.gpa && <p className="mt-1 text-sm text-red-500">{errors.gpa.message}</p>}
+                  <label className="block text-sm font-medium text-gray-700">Nationality</label>
+                  <input
+                    type="text"
+                    {...register("nationality")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.nationality && <p className="mt-1 text-sm text-red-600">{errors.nationality.message}</p>}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Country of Residence</label>
+                  <input
+                    type="text"
+                    {...register("country")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.country && <p className="mt-1 text-sm text-red-600">{errors.country.message}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">City</label>
+                  <input
+                    type="text"
+                    {...register("city")}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                  {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>}
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-6">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center rounded-md border border-transparent bg-primary-600 px-6 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                >
+                  {isSubmitting ? "Saving..." : "Continue to Step 2"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                <h3 className="text-lg font-medium leading-6 text-gray-900">
+                  How would you like to use the platform?
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Select all the roles that apply to you. You can update this later.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ROLES.map((role) => (
+                  <div
+                    key={role.id}
+                    onClick={() => toggleRole(role.id)}
+                    className={`relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none ${
+                      selectedRoles.includes(role.id)
+                        ? "border-primary-500 ring-2 ring-primary-500"
+                        : "border-gray-300 hover:border-primary-400"
+                    }`}
+                  >
+                    <span className="flex flex-1">
+                      <span className="flex flex-col">
+                        <span className="block text-sm font-medium text-gray-900 flex items-center">
+                          <role.icon className="h-5 w-5 mr-2 text-primary-500" />
+                          {role.label}
+                        </span>
+                        <span className="mt-1 flex items-center text-sm text-gray-500">
+                          {role.description}
+                        </span>
+                      </span>
+                    </span>
+                    <CheckBadgeIcon
+                      className={`h-5 w-5 text-primary-600 ${
+                        selectedRoles.includes(role.id) ? "opacity-100" : "opacity-0"
+                      } transition-opacity`}
+                      aria-hidden="true"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between mt-8">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-6 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={onSubmitInterests}
+                  disabled={isSubmitting || selectedRoles.length === 0}
+                  className="inline-flex items-center rounded-md border border-transparent bg-primary-600 px-6 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? "Completing Profile..." : "Complete Profile"}
+                </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Scholarship Info */}
-          {step === 3 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <h2 className="text-xl font-bold border-b pb-2">Scholarship Details</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
-                  <label className="form-label">Total Family Income (Annual USD)</label>
-                  <input type="number" {...register("family_income")} className={`form-input w-full ${errors.family_income ? 'border-red-500' : ''}`} placeholder="e.g. 45000" />
-                  {errors.family_income && <p className="mt-1 text-sm text-red-500">{errors.family_income.message}</p>}
-                </div>
-                <div className="md:col-span-2">
-                  <label className="form-label">Emergency Contact</label>
-                  <input type="text" {...register("emergency_contact")} className={`form-input w-full ${errors.emergency_contact ? 'border-red-500' : ''}`} placeholder="Name and phone number" />
-                  {errors.emergency_contact && <p className="mt-1 text-sm text-red-500">{errors.emergency_contact.message}</p>}
-                </div>
-                <div className="md:col-span-2 flex items-center gap-3 p-4 bg-surface-50 dark:bg-surface-800 rounded-xl border">
-                  <input type="checkbox" id="housing" {...register("housing_required")} className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500" />
-                  <label htmlFor="housing" className="font-medium cursor-pointer">I require university housing allocation</label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: Review */}
-          {step === 4 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <h2 className="text-xl font-bold border-b pb-2 flex items-center gap-2 text-primary-600">
-                <CheckBadgeIcon className="w-6 h-6" /> Review Your Profile
-              </h2>
-              <div className="bg-surface-50 dark:bg-surface-800 rounded-xl p-6 space-y-4 text-sm">
-                <div className="grid grid-cols-2 gap-4">
-                  <div><span className="text-surface-500">Phone:</span> {getValues("phone_number")}</div>
-                  <div><span className="text-surface-500">Location:</span> {getValues("city")}, {getValues("country")}</div>
-                  <div><span className="text-surface-500">University:</span> {getValues("university_name")}</div>
-                  <div><span className="text-surface-500">Major:</span> {getValues("department")} (Year {getValues("academic_year")})</div>
-                  <div><span className="text-surface-500">GPA:</span> {getValues("gpa")}</div>
-                  <div><span className="text-surface-500">Housing Needed:</span> {getValues("housing_required") ? 'Yes' : 'No'}</div>
-                </div>
-              </div>
-              <p className="text-sm text-surface-500 text-center">By submitting, you confirm that all provided information is accurate and true.</p>
-            </div>
-          )}
-
-          <div className="mt-8 flex justify-between pt-6 border-t border-surface-200 dark:border-surface-700">
-            {step > 1 ? (
-              <button type="button" onClick={prevStep} disabled={isSubmitting} className="btn-outline px-6">Back</button>
-            ) : <div></div>}
-            
-            {step < 4 ? (
-              <button type="button" onClick={nextStep} className="btn-gradient px-8 shadow-lg shadow-primary-500/25">Continue</button>
-            ) : (
-              <button type="submit" disabled={isSubmitting} className="btn-gradient px-8 shadow-lg shadow-primary-500/25 bg-emerald-500 hover:bg-emerald-600 border-none flex items-center gap-2">
-                {isSubmitting ? 'Submitting...' : 'Complete Profile'}
-              </button>
-            )}
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );

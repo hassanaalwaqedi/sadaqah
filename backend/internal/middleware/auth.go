@@ -44,17 +44,22 @@ func JWTAuth(accessSecret string, rdb *redis.Client, logger *slog.Logger) func(n
 			// 2. Fallback to Authorization header
 			if tokenString == "" {
 				authHeader := r.Header.Get("Authorization")
-				if authHeader == "" {
-					writeAuthError(w, "Missing authorization header or cookie")
-					return
+				if authHeader != "" {
+					parts := strings.SplitN(authHeader, " ", 2)
+					if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+						tokenString = parts[1]
+					}
 				}
+			}
 
-				parts := strings.SplitN(authHeader, " ", 2)
-				if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-					writeAuthError(w, "Invalid authorization header format")
-					return
-				}
-				tokenString = parts[1]
+			// 3. Fallback to URL query parameter (useful for SSE EventSource)
+			if tokenString == "" {
+				tokenString = r.URL.Query().Get("token")
+			}
+
+			if tokenString == "" {
+				writeAuthError(w, "Missing authorization header, cookie, or token query param")
+				return
 			}
 
 			// Parse and validate the JWT

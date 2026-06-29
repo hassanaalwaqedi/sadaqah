@@ -24,18 +24,18 @@ const navigation = [
         permissions: ["scholarships.read"],
       },
       {
-        name: "السكن الطلابي (الخريطة)",
-        href: "/portal/housing/map",
-        icon: "building",
-        roles: ["super_admin", "admin", "housing_admin", "housing_manager", "student"],
-        permissions: ["housing.read"],
+        name: "طلباتي",
+        href: "/portal/my-applications",
+        icon: "document",
+        roles: [],
+        permissions: [],
       },
       {
-        name: "الفواتير والإيجار",
-        href: "/portal/housing/invoices",
-        icon: "banknotes",
-        roles: ["super_admin", "admin", "housing_admin", "housing_manager", "student"],
-        permissions: ["housing.read"],
+        name: "إدارة المنح",
+        href: "/portal/admin/scholarships",
+        icon: "cog",
+        roles: ["super_admin", "admin", "scholarship_admin", "scholarship_manager"],
+        permissions: ["scholarships.manage"],
       },
       {
         name: "مسابقات الابتكار",
@@ -105,7 +105,7 @@ const navigation = [
         name: "التقارير",
         href: "/portal/reports",
         icon: "chart",
-        roles: ["super_admin", "admin", "scholarship_admin", "housing_admin", "auditor"],
+        roles: ["super_admin", "admin", "scholarship_admin", "auditor"],
         permissions: ["reports.read"],
       },
       {
@@ -274,7 +274,7 @@ export function Sidebar() {
 
       {/* User Info */}
       <div className="p-4 border-t border-surface-200 dark:border-surface-700">
-        <div className="flex items-center gap-3">
+        <Link href="/portal/profile" className="flex items-center gap-3 hover:bg-surface-50 dark:hover:bg-surface-800 p-2 rounded-lg transition-colors cursor-pointer">
           <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-sm font-medium text-primary-700 dark:text-primary-300">
             {user?.profile?.first_name_en?.[0] || "U"}
           </div>
@@ -284,7 +284,7 @@ export function Sidebar() {
             </p>
             <p className="text-xs text-surface-400 truncate">{user?.email}</p>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   );

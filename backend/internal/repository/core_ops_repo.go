@@ -17,47 +17,7 @@ func NewCoreOpsRepository(db *pgxpool.Pool) *CoreOpsRepository {
 	return &CoreOpsRepository{db: db}
 }
 
-// ── Campaigns & Donations ──
 
-func (r *CoreOpsRepository) GetCampaigns(ctx context.Context) ([]model.Campaign, error) {
-	query := `
-		SELECT id, title_en, title_ar, description, goal_amount, raised_amount, currency, start_date, end_date, status, created_by, created_at
-		FROM campaigns
-		WHERE deleted_at IS NULL AND status = 'active'
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch campaigns: %w", err)
-	}
-	defer rows.Close()
-
-	var campaigns []model.Campaign
-	for rows.Next() {
-		var c model.Campaign
-		if err := rows.Scan(&c.ID, &c.TitleEn, &c.TitleAr, &c.Description, &c.GoalAmount, &c.RaisedAmount, &c.Currency, &c.StartDate, &c.EndDate, &c.Status, &c.CreatedBy, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		campaigns = append(campaigns, c)
-	}
-	return campaigns, nil
-}
-
-func (r *CoreOpsRepository) GetCampaignByID(ctx context.Context, id string) (*model.Campaign, error) {
-	query := `
-		SELECT id, title_en, title_ar, description, goal_amount, raised_amount, currency, start_date, end_date, status, created_by, created_at
-		FROM campaigns
-		WHERE id = $1 AND deleted_at IS NULL AND status = 'active'
-	`
-	var c model.Campaign
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&c.ID, &c.TitleEn, &c.TitleAr, &c.Description, &c.GoalAmount, &c.RaisedAmount, &c.Currency, &c.StartDate, &c.EndDate, &c.Status, &c.CreatedBy, &c.CreatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch campaign by id: %w", err)
-	}
-	return &c, nil
-}
 
 func (r *CoreOpsRepository) GetPublicMetrics(ctx context.Context) (int, float64, error) {
 	var studentCount int
@@ -74,49 +34,6 @@ func (r *CoreOpsRepository) GetPublicMetrics(ctx context.Context) (int, float64,
 	}
 
 	return studentCount, totalDonations, nil
-}
-
-func (r *CoreOpsRepository) ProcessDonation(ctx context.Context, d *model.Donation) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	// Record donation
-	query := `
-		INSERT INTO donations (campaign_id, donor_id, amount, currency, payment_method, payment_ref, is_anonymous, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed')
-		RETURNING id, donated_at
-	`
-	err = tx.QueryRow(ctx, query, d.CampaignID, d.DonorID, d.Amount, d.Currency, d.PaymentMethod, d.PaymentRef, d.IsAnonymous).Scan(&d.ID, &d.DonatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to insert donation: %w", err)
-	}
-
-	// Generate Donation Receipt
-	receiptNo := fmt.Sprintf("RCPT-%s", d.ID.String()[:8])
-	_, err = tx.Exec(ctx, `INSERT INTO donation_receipts (donation_id, receipt_no) VALUES ($1, $2)`, d.ID, receiptNo)
-	if err != nil {
-		return fmt.Errorf("failed to insert donation receipt: %w", err)
-	}
-
-	// Record Financial Transaction (Income)
-	_, err = tx.Exec(ctx, `
-		INSERT INTO financial_transactions (type, category, amount, currency, reference_type, reference_id, transaction_date)
-		VALUES ('income', 'donation', $1, $2, 'donation', $3, CURRENT_DATE)
-	`, d.Amount, d.Currency, d.ID)
-	if err != nil {
-		return fmt.Errorf("failed to insert financial transaction: %w", err)
-	}
-
-	// Update campaign raised amount
-	_, err = tx.Exec(ctx, `UPDATE campaigns SET raised_amount = raised_amount + $1 WHERE id = $2`, d.Amount, d.CampaignID)
-	if err != nil {
-		return fmt.Errorf("failed to update campaign: %w", err)
-	}
-
-	return tx.Commit(ctx)
 }
 
 // ── Financial ──
@@ -216,25 +133,6 @@ func (r *CoreOpsRepository) SubmitGrant(ctx context.Context, g *model.ResearchGr
 }
 
 // ── Inventory ──
-
-func (r *CoreOpsRepository) GetAssets(ctx context.Context) ([]model.Asset, error) {
-	query := `SELECT id, asset_tag, name, description, purchase_cost, condition, location, created_at FROM assets WHERE deleted_at IS NULL`
-	rows, err := r.db.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch assets: %w", err)
-	}
-	defer rows.Close()
-
-	var assets []model.Asset
-	for rows.Next() {
-		var a model.Asset
-		if err := rows.Scan(&a.ID, &a.AssetTag, &a.Name, &a.Description, &a.PurchaseCost, &a.Condition, &a.Location, &a.CreatedAt); err != nil {
-			return nil, err
-		}
-		assets = append(assets, a)
-	}
-	return assets, nil
-}
 
 func (r *CoreOpsRepository) GetSystemReports(ctx context.Context) (*model.SystemReport, error) {
 	var report model.SystemReport

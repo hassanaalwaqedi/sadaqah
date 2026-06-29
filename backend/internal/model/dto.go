@@ -148,6 +148,32 @@ type CreateRoleRequest struct {
 	PermissionIDs []uuid.UUID `json:"permission_ids,omitempty"`
 }
 
+// ── Innovation DTOs ──
+
+type InnovationApplicationDetails struct {
+	Submission   ProjectSubmission    `json:"submission"`
+	Event        InnovationEvent      `json:"event"`
+	Category     *EventCategory       `json:"category,omitempty"`
+	Submitter    UserWithProfile      `json:"submitter"`
+	Team         []ProjectTeamMember  `json:"team"`
+	Timeline     []ProjectTimeline    `json:"timeline"`
+	Messages     []ProjectMessage     `json:"messages"`
+	Certificates []ProjectCertificate `json:"certificates"`
+	Assignments  []JudgingAssignment  `json:"assignments"`
+	Scores       []JudgingScore       `json:"scores"`
+}
+
+type UpdateInnovationStatusRequest struct {
+	Status      string `json:"status" validate:"required"`
+	Message     string `json:"message,omitempty"`
+	IsInternal  bool   `json:"is_internal,omitempty"`
+}
+
+type InnovationMessageRequest struct {
+	Message    string `json:"message" validate:"required"`
+	IsInternal bool   `json:"is_internal,omitempty"`
+}
+
 // UpdateRoleRequest is the payload for updating a role.
 type UpdateRoleRequest struct {
 	Name          string  `json:"name,omitempty"`

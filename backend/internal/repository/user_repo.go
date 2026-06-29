@@ -195,14 +195,28 @@ func (r *UserRepository) GetProfile(ctx context.Context, userID uuid.UUID) (*mod
 	return p, nil
 }
 
+// UpdateProfile updates an existing user profile.
+func (r *UserRepository) UpdateProfile(ctx context.Context, p *model.UserProfile) error {
+	query := `
+		UPDATE user_profiles 
+		SET first_name_en = $1, first_name_ar = $2, last_name_en = $3, last_name_ar = $4, 
+		    phone = $5, gender = $6, nationality = $7, address = $8, date_of_birth = $9, avatar_file_id = $10, updated_at = NOW()
+		WHERE user_id = $11`
+	_, err := r.pool.Exec(ctx, query,
+		p.FirstNameEN, p.FirstNameAR, p.LastNameEN, p.LastNameAR,
+		p.Phone, p.Gender, p.Nationality, p.Address, p.DateOfBirth, p.AvatarFileID, p.UserID,
+	)
+	return err
+}
+
 // CreateStudentProfile inserts a new student profile.
 func (r *UserRepository) CreateStudentProfile(ctx context.Context, p *model.StudentProfile) error {
 	query := `
-		INSERT INTO student_profiles (user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, housing_required, family_income, emergency_contact, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+		INSERT INTO student_profiles (user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, family_income, emergency_contact, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
 	_, err := r.pool.Exec(ctx, query,
-		p.UserID, p.PhoneNumber, p.Nationality, p.Country, p.City, p.UniversityName, p.Faculty, p.Department, p.AcademicYear, p.GPA, p.HousingRequired, p.FamilyIncome, p.EmergencyContact, p.CreatedAt, p.UpdatedAt,
+		p.UserID, p.PhoneNumber, p.Nationality, p.Country, p.City, p.UniversityName, p.Faculty, p.Department, p.AcademicYear, p.GPA, p.FamilyIncome, p.EmergencyContact, p.CreatedAt, p.UpdatedAt,
 	)
 	return err
 }
@@ -210,13 +224,13 @@ func (r *UserRepository) CreateStudentProfile(ctx context.Context, p *model.Stud
 // GetStudentProfile retrieves a student profile by user ID.
 func (r *UserRepository) GetStudentProfile(ctx context.Context, userID uuid.UUID) (*model.StudentProfile, error) {
 	query := `
-		SELECT user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, housing_required, family_income, emergency_contact, created_at, updated_at
+		SELECT user_id, phone_number, nationality, country, city, university_name, faculty, department, academic_year, gpa, family_income, emergency_contact, created_at, updated_at
 		FROM student_profiles
 		WHERE user_id = $1`
 
 	p := &model.StudentProfile{}
 	err := r.pool.QueryRow(ctx, query, userID).Scan(
-		&p.UserID, &p.PhoneNumber, &p.Nationality, &p.Country, &p.City, &p.UniversityName, &p.Faculty, &p.Department, &p.AcademicYear, &p.GPA, &p.HousingRequired, &p.FamilyIncome, &p.EmergencyContact, &p.CreatedAt, &p.UpdatedAt,
+		&p.UserID, &p.PhoneNumber, &p.Nationality, &p.Country, &p.City, &p.UniversityName, &p.Faculty, &p.Department, &p.AcademicYear, &p.GPA, &p.FamilyIncome, &p.EmergencyContact, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -246,6 +260,7 @@ func (r *UserRepository) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]
 
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
+		fmt.Printf("GetUserRoles query error: %v\n", err)
 		return nil, fmt.Errorf("querying user roles: %w", err)
 	}
 	defer rows.Close()
@@ -257,6 +272,7 @@ func (r *UserRepository) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]
 			&role.ID, &role.Name, &role.DisplayNameEN, &role.DisplayNameAR,
 			&role.Description, &role.IsSystem, &role.IsActive, &role.CreatedAt, &role.UpdatedAt,
 		); err != nil {
+			fmt.Printf("GetUserRoles scan error: %v\n", err)
 			return nil, fmt.Errorf("scanning role: %w", err)
 		}
 		roles = append(roles, role)
@@ -519,3 +535,80 @@ func (r *UserRepository) GetLoginHistory(ctx context.Context, userID uuid.UUID, 
 
 	return attempts, nil
 }
+
+// UpdateUserInterests updates the interests for a user.
+func (r *UserRepository) UpdateUserInterests(ctx context.Context, userID uuid.UUID, interests []string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Delete existing
+	if _, err := tx.Exec(ctx, `DELETE FROM user_interests WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+
+	// Insert new
+	if len(interests) > 0 {
+		for _, interest := range interests {
+			if _, err := tx.Exec(ctx, `INSERT INTO user_interests (user_id, interest) VALUES ($1, $2)`, userID, interest); err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// GetUserInterests retrieves the interests for a user.
+func (r *UserRepository) GetUserInterests(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT interest FROM user_interests WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var interests []string
+	for rows.Next() {
+		var interest string
+		if err := rows.Scan(&interest); err != nil {
+			return nil, err
+		}
+		interests = append(interests, interest)
+	}
+	return interests, nil
+}
+
+// AddUserDocument adds a document to the user's Profile Vault.
+func (r *UserRepository) AddUserDocument(ctx context.Context, doc *model.UserDocument) error {
+	query := `
+		INSERT INTO user_documents (user_id, document_type, file_url, metadata, uploaded_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		RETURNING id, uploaded_at, updated_at`
+	
+	err := r.pool.QueryRow(ctx, query, doc.UserID, doc.DocumentType, doc.FileURL, doc.Metadata).
+		Scan(&doc.ID, &doc.UploadedAt, &doc.UpdatedAt)
+	return err
+}
+
+// GetUserDocuments retrieves all documents for a user.
+func (r *UserRepository) GetUserDocuments(ctx context.Context, userID uuid.UUID) ([]model.UserDocument, error) {
+	query := `SELECT id, user_id, document_type, file_url, metadata, uploaded_at, updated_at FROM user_documents WHERE user_id = $1 ORDER BY uploaded_at DESC`
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []model.UserDocument
+	for rows.Next() {
+		var doc model.UserDocument
+		if err := rows.Scan(&doc.ID, &doc.UserID, &doc.DocumentType, &doc.FileURL, &doc.Metadata, &doc.UploadedAt, &doc.UpdatedAt); err != nil {
+			return nil, err
+		}
+		docs = append(docs, doc)
+	}
+	return docs, nil
+}
+

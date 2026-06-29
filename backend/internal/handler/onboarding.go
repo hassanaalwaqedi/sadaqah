@@ -2,10 +2,8 @@ package handler
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/sadaqah/backend/internal/middleware"
-	"github.com/sadaqah/backend/internal/model"
 	"github.com/sadaqah/backend/internal/repository"
 )
 
@@ -17,8 +15,8 @@ func NewOnboardingHandler(userRepo *repository.UserRepository) *OnboardingHandle
 	return &OnboardingHandler{userRepo: userRepo}
 }
 
-// Submit handles POST /api/v1/onboarding
-func (h *OnboardingHandler) Submit(w http.ResponseWriter, r *http.Request) {
+// Phase1Identity handles POST /api/v1/auth/onboarding/identity
+func (h *OnboardingHandler) Phase1Identity(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
@@ -26,83 +24,86 @@ func (h *OnboardingHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		PhoneNumber      string  `json:"phone_number"`
-		Nationality      string  `json:"nationality"`
-		Country          string  `json:"country"`
-		City             string  `json:"city"`
-		UniversityName   string  `json:"university_name"`
-		Faculty          string  `json:"faculty"`
-		Department       string  `json:"department"`
-		AcademicYear     int     `json:"academic_year"`
-		GPA              float64 `json:"gpa"`
-		HousingRequired  bool    `json:"housing_required"`
-		FamilyIncome     float64 `json:"family_income"`
-		EmergencyContact string  `json:"emergency_contact"`
+		FirstNameEN string `json:"first_name_en"`
+		FirstNameAR string `json:"first_name_ar"`
+		LastNameEN  string `json:"last_name_en"`
+		LastNameAR  string `json:"last_name_ar"`
+		Phone       string `json:"phone"`
+		Gender      string `json:"gender"`
+		Nationality string `json:"nationality"`
+		Country     string `json:"country"` // Address placeholder
+		City        string `json:"city"`    // Address placeholder
 	}
-
-	if err := parseJSON(r, &req); err != nil {
-		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body")
+	if !parseAndValidateJSON(w, r, &req) {
 		return
 	}
 
-	// Basic validation
-	var errs []model.FieldError
-	if req.PhoneNumber == "" {
-		errs = append(errs, model.FieldError{Field: "phone_number", Message: "Phone number is required"})
+	profile, err := h.userRepo.GetProfile(r.Context(), userID)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get profile")
+		return
 	}
-	if req.GPA < 0.0 || req.GPA > 4.0 {
-		errs = append(errs, model.FieldError{Field: "gpa", Message: "GPA must be between 0.0 and 4.0"})
-	}
-	if req.AcademicYear < 1 || req.AcademicYear > 7 {
-		errs = append(errs, model.FieldError{Field: "academic_year", Message: "Invalid academic year"})
-	}
-	if len(errs) > 0 {
-		writeValidationError(w, r, errs)
+	if profile == nil {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Profile not found")
 		return
 	}
 
-	now := time.Now().UTC()
-	profile := &model.StudentProfile{
-		UserID:           userID,
-		PhoneNumber:      &req.PhoneNumber,
-		Nationality:      &req.Nationality,
-		Country:          &req.Country,
-		City:             &req.City,
-		UniversityName:   &req.UniversityName,
-		Faculty:          &req.Faculty,
-		Department:       &req.Department,
-		AcademicYear:     &req.AcademicYear,
-		GPA:              &req.GPA,
-		HousingRequired:  req.HousingRequired,
-		FamilyIncome:     &req.FamilyIncome,
-		EmergencyContact: &req.EmergencyContact,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+	profile.FirstNameEN = req.FirstNameEN
+	profile.LastNameEN = req.LastNameEN
+	if req.FirstNameAR != "" {
+		profile.FirstNameAR = &req.FirstNameAR
 	}
+	if req.LastNameAR != "" {
+		profile.LastNameAR = &req.LastNameAR
+	}
+	if req.Phone != "" {
+		profile.Phone = &req.Phone
+	}
+	if req.Gender != "" {
+		profile.Gender = &req.Gender
+	}
+	if req.Nationality != "" {
+		profile.Nationality = &req.Nationality
+	}
+	
+	// Assuming address string for country/city
+	address := req.City + ", " + req.Country
+	profile.Address = &address
 
-	// Check if already completed
-	existingUser, err := h.userRepo.GetByID(r.Context(), userID)
-	if err != nil || existingUser == nil {
-		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve user")
+	if err := h.userRepo.UpdateProfile(r.Context(), profile); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update identity")
 		return
 	}
 
-	if existingUser.ProfileCompleted {
-		writeError(w, r, http.StatusConflict, "ALREADY_COMPLETED", "Profile is already completed")
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Identity updated successfully"})
+}
+
+// Phase2Interests handles POST /api/v1/auth/onboarding/interests
+func (h *OnboardingHandler) Phase2Interests(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Not authenticated")
 		return
 	}
 
-	// Insert profile
-	if err := h.userRepo.CreateStudentProfile(r.Context(), profile); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to save student profile")
+	var req struct {
+		Interests []string `json:"interests"`
+	}
+	if !parseAndValidateJSON(w, r, &req) {
 		return
 	}
 
-	// Mark user profile as completed
+	if err := h.userRepo.UpdateUserInterests(r.Context(), userID, req.Interests); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update interests")
+		return
+	}
+
+	// Mark profile as completed
 	if err := h.userRepo.SetProfileCompleted(r.Context(), userID); err != nil {
-		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update profile status")
+		h.userRepo.UpdateUserInterests(r.Context(), userID, nil) // rollback somewhat
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to mark profile as completed")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model.SuccessResponse{Message: "Onboarding completed successfully"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Interests updated successfully"})
 }

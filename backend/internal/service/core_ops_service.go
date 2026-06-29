@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -28,58 +27,10 @@ func NewCoreOpsService(repo *repository.CoreOpsRepository, auditService *AuditSe
 	}
 }
 
-func (s *CoreOpsService) GetCampaigns(ctx context.Context) ([]model.Campaign, error) {
-	return s.repo.GetCampaigns(ctx)
-}
 
-func (s *CoreOpsService) GetCampaignByID(ctx context.Context, id string) (*model.Campaign, error) {
-	return s.repo.GetCampaignByID(ctx, id)
-}
 
 func (s *CoreOpsService) GetPublicMetrics(ctx context.Context) (int, float64, error) {
 	return s.repo.GetPublicMetrics(ctx)
-}
-
-func (s *CoreOpsService) ProcessDonation(ctx context.Context, campaignID string, donorID *string, donorEmail string, amount float64, currency, paymentMethod, paymentRef string, isAnon bool) (*model.Donation, error) {
-	cID, err := uuid.Parse(campaignID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid campaign ID: %w", err)
-	}
-
-	var dID *uuid.UUID
-	if donorID != nil && *donorID != "" {
-		id, err := uuid.Parse(*donorID)
-		if err == nil {
-			dID = &id
-		}
-	}
-
-	donation := &model.Donation{
-		CampaignID:    cID,
-		DonorID:       dID,
-		Amount:        amount,
-		Currency:      currency,
-		PaymentMethod: paymentMethod,
-		PaymentRef:    paymentRef,
-		IsAnonymous:   isAnon,
-	}
-
-	if err := s.repo.ProcessDonation(ctx, donation); err != nil {
-		s.logger.Error("Failed to process donation", "error", err)
-		return nil, err
-	}
-
-	// Audit Log
-	s.auditService.LogAction(ctx, "PROCESS_DONATION", "donation", donation.ID, nil, donation)
-
-	// Send Email Receipt
-	if s.emailService != nil && donorEmail != "" {
-		// Create a mock receipt number
-		receiptNo := fmt.Sprintf("RCPT-%s", strings.ToUpper(donation.ID.String()[:8]))
-		s.emailService.SendDonationReceipt(donorEmail, amount, currency, receiptNo)
-	}
-
-	return donation, nil
 }
 
 func (s *CoreOpsService) GetBudgets(ctx context.Context) ([]model.Budget, error) {
@@ -108,10 +59,6 @@ func (s *CoreOpsService) SubmitGrant(ctx context.Context, researcherID, title, a
 	s.auditService.LogAction(ctx, "SUBMIT_GRANT", "research_grant", grant.ID, nil, grant)
 
 	return grant, nil
-}
-
-func (s *CoreOpsService) GetAssets(ctx context.Context) ([]model.Asset, error) {
-	return s.repo.GetAssets(ctx)
 }
 
 func (s *CoreOpsService) GetSystemReports(ctx context.Context) (*model.SystemReport, error) {

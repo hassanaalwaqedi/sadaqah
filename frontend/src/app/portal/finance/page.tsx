@@ -1,31 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BanknotesIcon, ChartBarIcon, ArrowTrendingUpIcon, WalletIcon } from "@heroicons/react/24/outline";
+import { apiClient } from "@/lib/api-client";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from "recharts";
 
-const MOCK_BUDGETS = [
-  { id: "1", name_en: "Operations Budget 2024", fiscal_year: "2024", total_amount: 5000000, spent_amount: 3200000 },
-  { id: "2", name_en: "Research Grants 2024", fiscal_year: "2024", total_amount: 1500000, spent_amount: 850000 },
-  { id: "3", name_en: "Student Housing Maintenance", fiscal_year: "2024", total_amount: 800000, spent_amount: 790000 },
-];
+type Budget = {
+  id: string;
+  name_en: string;
+  name_ar: string;
+  fiscal_year: string;
+  total_amount: number;
+  spent_amount: number;
+};
 
 export default function FinanceDashboard() {
-  const [budgets] = useState(MOCK_BUDGETS);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadBudgets = async () => {
+      try {
+        const res = await apiClient.get("/finance/budgets");
+        setBudgets(res.data || []);
+      } catch (err) {
+        console.error("Failed to load budgets", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadBudgets();
+  }, []);
 
   const totalBudget = budgets.reduce((acc, b) => acc + b.total_amount, 0);
   const totalSpent = budgets.reduce((acc, b) => acc + b.spent_amount, 0);
-  const overallProgress = (totalSpent / totalBudget) * 100;
+  const overallProgress = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+
+  if (loading) {
+    return <div className="flex justify-center p-12"><div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full"></div></div>;
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold gradient-text">Financial Management</h1>
+          <h1 className="text-2xl font-bold gradient-text">العمليات المالية للمؤسسة</h1>
           <p className="text-surface-600 dark:text-surface-400 mt-1">
-            Track organizational budgets, expenses, and allocations across all departments.
+            شفافية مالية في الوقت الفعلي، وتدقيق آلي، وتتبع الميزانية.
           </p>
         </div>
-        <button className="btn-gradient px-4 py-2">Create Budget</button>
+        <div className="flex gap-4">
+          <a href="/portal/finance/transactions" className="btn-outline px-4 py-2">سجل المعاملات</a>
+          <a href="/portal/finance/budgets/create" className="btn-gradient px-4 py-2 inline-block">إنشاء ميزانية</a>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -35,8 +71,8 @@ export default function FinanceDashboard() {
               <BanknotesIcon className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm text-surface-500 font-medium">Total Fiscal Budget (2024)</p>
-              <h3 className="text-3xl font-bold">${(totalBudget / 1000000).toFixed(1)}M</h3>
+              <p className="text-sm text-surface-500 font-medium">إجمالي الميزانية المالية (2024)</p>
+              <h3 className="text-3xl font-bold">${(totalBudget / 1000000).toFixed(2)}M</h3>
             </div>
           </div>
         </div>
@@ -47,15 +83,15 @@ export default function FinanceDashboard() {
               <WalletIcon className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm text-surface-500 font-medium">Total Spent</p>
-              <h3 className="text-3xl font-bold">${(totalSpent / 1000000).toFixed(1)}M</h3>
+              <p className="text-sm text-surface-500 font-medium">إجمالي الإنفاق</p>
+              <h3 className="text-3xl font-bold">${(totalSpent / 1000000).toFixed(2)}M</h3>
             </div>
           </div>
         </div>
 
         <div className="glass-card p-6 border-t-4 border-t-emerald-500 flex flex-col justify-center">
           <div className="flex justify-between items-end mb-2">
-            <span className="text-sm font-medium text-surface-500">Overall Utilization</span>
+            <span className="text-sm font-medium text-surface-500">الاستخدام الإجمالي</span>
             <span className="text-2xl font-bold">{overallProgress.toFixed(1)}%</span>
           </div>
           <div className="w-full h-3 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
@@ -67,49 +103,76 @@ export default function FinanceDashboard() {
         </div>
       </div>
 
-      <h2 className="text-lg font-bold mb-4">Budget Allocations</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {budgets.map((budget) => {
-          const progress = (budget.spent_amount / budget.total_amount) * 100;
-          const isWarning = progress > 85;
-          const isDanger = progress > 95;
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="glass-card p-6">
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <ChartBarIcon className="w-5 h-5 text-primary-500" />
+            تحليلات استهلاك الميزانية
+          </h2>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={budgets} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.2} />
+                <XAxis dataKey="name_ar" tick={{fill: '#888'}} />
+                <YAxis tick={{fill: '#888'}} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
+                  itemStyle={{ color: '#fff' }}
+                />
+                <Legend />
+                <Bar dataKey="total_amount" name="المخصص" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="spent_amount" name="المنفق" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-          return (
-            <div key={budget.id} className="glass-card p-6">
-              <h3 className="font-bold text-lg mb-4">{budget.name_en}</h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between text-sm">
-                  <span className="text-surface-500">Allocated</span>
-                  <span className="font-medium">${budget.total_amount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-surface-500">Spent</span>
-                  <span className="font-medium">${budget.spent_amount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-surface-500">Remaining</span>
-                  <span className={`font-bold ${isDanger ? 'text-rose-500' : isWarning ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    ${(budget.total_amount - budget.spent_amount).toLocaleString()}
-                  </span>
-                </div>
+        <div className="glass-card p-6">
+          <h2 className="text-lg font-bold mb-4">نظرة عامة على ميزانيات الأقسام</h2>
+          <div className="space-y-6">
+            {budgets.map((budget) => {
+              const progress = budget.total_amount > 0 ? (budget.spent_amount / budget.total_amount) * 100 : 0;
+              const isWarning = progress > 85;
+              const isDanger = progress > 95;
 
-                <div className="pt-2">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Utilization</span>
-                    <span className="font-bold">{progress.toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${isDanger ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-primary-500'}`}
-                      style={{ width: `${progress}%` }}
-                    ></div>
+              return (
+                <div key={budget.id} className="p-4 border border-surface-200 dark:border-surface-700 rounded-xl bg-surface-50 dark:bg-surface-800/50">
+                  <h3 className="font-bold text-md mb-3">{budget.name_ar || budget.name_en}</h3>
+                  
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-surface-500">المخصص</span>
+                      <span className="font-medium">${budget.total_amount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-surface-500">المنفق</span>
+                      <span className="font-medium">${budget.spent_amount.toLocaleString()}</span>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>الاستخدام</span>
+                        <span className="font-bold">{progress.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${isDanger ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-primary-500'}`}
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+            
+            {budgets.length === 0 && (
+              <div className="p-8 text-center text-surface-500 border border-dashed border-surface-300 dark:border-surface-700 rounded-xl">
+                لم يتم تكوين ميزانيات لهذه السنة المالية.
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

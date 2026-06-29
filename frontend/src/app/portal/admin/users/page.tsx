@@ -123,9 +123,20 @@ export default function AdminUsersPage() {
     try {
       await apiClient.post(`/admin/users/${id}/roles`, { role });
       fetchUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to assign role", error);
-      alert("حدث خطأ أثناء تعيين الصلاحية");
+      alert(JSON.stringify(error.response?.data) || "حدث خطأ أثناء تعيين الصلاحية");
+    }
+  };
+
+  const handleRemoveRole = async (id: string, roleName: string) => {
+    if (!confirm("هل أنت متأكد من إزالة هذا الدور؟")) return;
+    try {
+      await apiClient.delete(`/admin/users/${id}/roles/${roleName}`);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Failed to remove role", error);
+      alert(JSON.stringify(error.response?.data) || "حدث خطأ أثناء إزالة الصلاحية");
     }
   };
 
@@ -248,11 +259,20 @@ export default function AdminUsersPage() {
                           <span
                             key={role}
                             className={cn(
-                              "px-2 py-0.5 text-[10px] font-semibold rounded-full",
+                              "inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full",
                               ROLE_COLORS[role] || "bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400"
                             )}
                           >
                             {ROLE_LABELS[role] || role}
+                            <PermissionGate permission="roles.assign">
+                              <button
+                                onClick={() => handleRemoveRole(user.id, role)}
+                                className="opacity-60 hover:opacity-100 transition-opacity"
+                                title="إزالة الدور"
+                              >
+                                &times;
+                              </button>
+                            </PermissionGate>
                           </span>
                         ))}
                         <PermissionGate permission="roles.assign">

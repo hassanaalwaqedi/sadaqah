@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, GraduationCap, DollarSign, Heart } from "lucide-react";
+import { ArrowRight, GraduationCap, DollarSign } from "lucide-react";
 
 // Don't pre-render at build time — the backend API is not available on Vercel's
 // build servers, so SSG would always fail. Render fresh on each request instead.
@@ -83,7 +83,8 @@ export default async function PublicLandingPage() {
         </div>
       </section>
 
-      {/* Dynamic Metrics Section */}
+      {/* Dynamic Metrics Section: hidden when live data is unavailable. */}
+      {metrics && (
       <section className="py-20 bg-white dark:bg-surface-900 border-y border-surface-200 dark:border-surface-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
@@ -91,12 +92,12 @@ export default async function PublicLandingPage() {
             <p className="text-surface-600 dark:text-surface-400">مدعوم بالبيانات الحية ودعمكم المستمر.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white/50 dark:bg-surface-800/50 backdrop-blur-xl border border-white/40 dark:border-surface-700/50 rounded-3xl p-8 text-center relative overflow-hidden group shadow-xl shadow-surface-200/20 dark:shadow-none hover:-translate-y-1 transition-all duration-300">
               <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-primary-500/10 blur-2xl group-hover:bg-primary-500/20 transition-colors"></div>
               <GraduationCap className="w-12 h-12 text-primary-500 mx-auto mb-6" />
               <div className="text-4xl font-bold text-surface-900 dark:text-white mb-2">
-                {metrics ? metrics.active_students : "1,200+"}
+                {metrics.active_students}
               </div>
               <div className="text-sm font-medium text-surface-500 uppercase tracking-wider">الطلاب النشطين</div>
             </div>
@@ -105,22 +106,15 @@ export default async function PublicLandingPage() {
               <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition-colors"></div>
               <DollarSign className="w-12 h-12 text-emerald-500 mx-auto mb-6" />
               <div className="text-4xl font-bold text-surface-900 dark:text-white mb-2">
-                {metrics ? `$${(metrics.funds_raised / 1000).toFixed(1)}k` : "$2.5M+"}
+                {`$${(metrics.funds_raised / 1000).toFixed(1)}k`}
               </div>
               <div className="text-sm font-medium text-surface-500 uppercase tracking-wider">الأموال المجموعة</div>
             </div>
 
-            <div className="bg-white/50 dark:bg-surface-800/50 backdrop-blur-xl border border-white/40 dark:border-surface-700/50 rounded-3xl p-8 text-center relative overflow-hidden group shadow-xl shadow-surface-200/20 dark:shadow-none hover:-translate-y-1 transition-all duration-300">
-              <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-rose-500/10 blur-2xl group-hover:bg-rose-500/20 transition-colors"></div>
-              <Heart className="w-12 h-12 text-rose-500 mx-auto mb-6" />
-              <div className="text-4xl font-bold text-surface-900 dark:text-white mb-2">
-                99%
-              </div>
-              <div className="text-sm font-medium text-surface-500 uppercase tracking-wider">نسبة النجاح</div>
-            </div>
           </div>
         </div>
       </section>
+      )}
     </div>
   );
 }

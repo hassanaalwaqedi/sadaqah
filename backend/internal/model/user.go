@@ -59,7 +59,6 @@ type StudentProfile struct {
 	Department       *string   `json:"department,omitempty"`
 	AcademicYear     *int      `json:"academic_year,omitempty"`
 	GPA              *float64  `json:"gpa,omitempty"`
-	HousingRequired  bool      `json:"housing_required"`
 	FamilyIncome     *float64  `json:"family_income,omitempty"`
 	EmergencyContact *string   `json:"emergency_contact,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -157,19 +156,6 @@ type LoginAttempt struct {
 	UserAgent   *string   `json:"user_agent,omitempty"`
 }
 
-// ── Notifications ──
-
-type Notification struct {
-	ID        uuid.UUID              `json:"id"`
-	UserID    uuid.UUID              `json:"user_id"`
-	Type      string                 `json:"type"`
-	Title     string                 `json:"title"`
-	Body      string                 `json:"body"`
-	Data      map[string]interface{} `json:"data,omitempty"`
-	IsRead    bool                   `json:"is_read"`
-	ReadAt    *time.Time             `json:"read_at,omitempty"`
-	CreatedAt time.Time              `json:"created_at"`
-}
 
 // ── Files ──
 

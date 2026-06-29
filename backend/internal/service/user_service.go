@@ -127,8 +127,16 @@ func (s *UserService) AssignRole(ctx context.Context, targetUserID uuid.UUID, ro
 }
 
 // RemoveRole removes a specific role from a user.
-func (s *UserService) RemoveRole(ctx context.Context, targetUserID, roleID, removedBy uuid.UUID) error {
-	if err := s.userRepo.RemoveRole(ctx, targetUserID, roleID); err != nil {
+func (s *UserService) RemoveRole(ctx context.Context, targetUserID uuid.UUID, roleName string, removedBy uuid.UUID) error {
+	role, err := s.userRepo.GetRoleByName(ctx, roleName)
+	if err != nil {
+		return fmt.Errorf("fetching role: %w", err)
+	}
+	if role == nil {
+		return fmt.Errorf("role '%s' not found", roleName)
+	}
+
+	if err := s.userRepo.RemoveRole(ctx, targetUserID, role.ID); err != nil {
 		return fmt.Errorf("removing role: %w", err)
 	}
 
@@ -137,8 +145,9 @@ func (s *UserService) RemoveRole(ctx context.Context, targetUserID, roleID, remo
 		s.rbacService.InvalidateUserPermissionCache(ctx, targetUserID)
 	}
 
-	s.auditService.LogAdminAction(ctx, "REMOVE_ROLE", "user", targetUserID, &targetUserID, true, map[string]interface{}{"role_id": roleID}, nil)
-	s.logger.Info("role removed", slog.String("user_id", targetUserID.String()), slog.String("role_id", roleID.String()))
+	s.auditService.LogAdminAction(ctx, "REMOVE_ROLE", "user", targetUserID, &targetUserID, true, map[string]interface{}{"role": roleName}, nil)
+	s.logger.Info("role removed", slog.String("user_id", targetUserID.String()), slog.String("role", roleName))
+
 	return nil
 }
 

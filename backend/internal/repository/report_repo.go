@@ -35,23 +35,6 @@ func (r *ReportRepository) GetScholarshipStats(ctx context.Context) (map[string]
 	}, nil
 }
 
-func (r *ReportRepository) GetHousingStats(ctx context.Context) (map[string]interface{}, error) {
-	var totalUnits, availableUnits, occupiedUnits int
-	err := r.db.QueryRow(ctx, `SELECT 
-		COUNT(*), 
-		COUNT(*) FILTER (WHERE status = 'available'),
-		COUNT(*) FILTER (WHERE status = 'occupied')
-	FROM housing_units`).Scan(&totalUnits, &availableUnits, &occupiedUnits)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get housing stats: %w", err)
-	}
-
-	return map[string]interface{}{
-		"total_units":     totalUnits,
-		"available_units": availableUnits,
-		"occupied_units":  occupiedUnits,
-	}, nil
-}
 
 func (r *ReportRepository) GetDonationStats(ctx context.Context) (map[string]interface{}, error) {
 	var totalDonations int
@@ -81,5 +64,72 @@ func (r *ReportRepository) GetFinanceStats(ctx context.Context) (map[string]inte
 		"total_income":  totalIncome,
 		"total_expense": totalExpense,
 		"net_balance":   totalIncome - totalExpense,
+	}, nil
+}
+
+func (r *ReportRepository) GetInnovationStats(ctx context.Context) (map[string]interface{}, error) {
+	var totalEvents, activeEvents, totalApps, pendingEvals int
+	err := r.db.QueryRow(ctx, `
+		SELECT 
+			(SELECT COUNT(*) FROM innovation_events),
+			(SELECT COUNT(*) FROM innovation_events WHERE status = 'open'),
+			(SELECT COUNT(*) FROM project_submissions),
+			(SELECT COUNT(*) FROM judging_assignments WHERE status IN ('assigned', 'in_progress'))
+	`).Scan(&totalEvents, &activeEvents, &totalApps, &pendingEvals)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get innovation stats: %w", err)
+	}
+
+	return map[string]interface{}{
+		"total_events":        totalEvents,
+		"active_events":       activeEvents,
+		"total_applications":  totalApps,
+		"pending_evaluations": pendingEvals,
+	}, nil
+}
+
+func (r *ReportRepository) GetUserStats(ctx context.Context) (map[string]interface{}, error) {
+	var total, active, verified int
+	err := r.db.QueryRow(ctx, `
+		SELECT 
+			COUNT(*),
+			COUNT(*) FILTER (WHERE is_active = true),
+			COUNT(*) FILTER (WHERE email_verified = true)
+		FROM users
+	`).Scan(&total, &active, &verified)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user stats: %w", err)
+	}
+
+	return map[string]interface{}{
+		"total_users":    total,
+		"active_users":   active,
+		"verified_users": verified,
+	}, nil
+}
+
+func (r *ReportRepository) GetSystemOverview(ctx context.Context) (map[string]interface{}, error) {
+	var totalUsers, activeCampaigns, totalScholarships, pendingEvals int
+	var totalDonations float64
+
+	err := r.db.QueryRow(ctx, `
+		SELECT 
+			(SELECT COUNT(*) FROM users),
+			(SELECT COALESCE(SUM(amount), 0) FROM donations),
+			(SELECT COUNT(*) FROM campaigns WHERE status = 'active'),
+			(SELECT COUNT(*) FROM scholarship_applications),
+			(SELECT COUNT(*) FROM judging_assignments WHERE status IN ('assigned', 'in_progress'))
+	`).Scan(&totalUsers, &totalDonations, &activeCampaigns, &totalScholarships, &pendingEvals)
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to get system overview: %w", err)
+	}
+
+	return map[string]interface{}{
+		"total_users":         totalUsers,
+		"total_donations":     totalDonations,
+		"active_campaigns":    activeCampaigns,
+		"total_scholarships":  totalScholarships,
+		"pending_evaluations": pendingEvals,
 	}, nil
 }

@@ -89,14 +89,11 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 	internalHandler := handler.NewInternalHandler(scholarshipService, aiJobService)
 
 	onboardingHandler := handler.NewOnboardingHandler(userRepo)
+	profileHandler := handler.NewProfileHandler(userRepo)
 
 	evaluationRepo := repository.NewEvaluationRepository(pool)
 	evaluationService := service.NewEvaluationService(evaluationRepo, logger)
 	evaluationHandler := handler.NewEvaluationHandler(evaluationService)
-
-	housingRepo := repository.NewHousingRepository(pool)
-	housingService := service.NewHousingService(housingRepo, auditService, logger)
-	housingHandler := handler.NewHousingHandler(housingService)
 
 	innovationRepo := repository.NewInnovationRepository(pool)
 	innovationService := service.NewInnovationService(innovationRepo, logger)
@@ -108,15 +105,20 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 	publicHandler := handler.NewPublicHandler(coreOpsService, rdb)
 
 	notificationRepo := repository.NewNotificationRepository(pool)
-	notificationService := service.NewNotificationService(notificationRepo, logger)
-	notificationHandler := handler.NewNotificationHandler(notificationService)
+	notificationService := service.NewNotificationService(notificationRepo, nil, nil, nil, logger)
+	notificationHandler := handler.NewNotificationHandler(notificationService, nil)
 
 	reportRepo := repository.NewReportRepository(pool)
 	reportService := service.NewReportService(reportRepo, logger)
 	reportHandler := handler.NewReportHandler(reportService)
 
-	// Start Background Cron Jobs
-	housingService.StartRentInvoiceCron()
+	dashboardRepo := repository.NewDashboardRepository(pool)
+	dashboardService := service.NewDashboardService(dashboardRepo, reportRepo, logger)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService)
+
+	assetRepo := repository.NewAssetRepository(pool)
+	assetService := service.NewAssetService(assetRepo, logger)
+	assetHandler := handler.NewAssetHandler(assetService)
 
 	// ── Routes ──
 	r.Route("/api/v1", func(api chi.Router) {
@@ -143,7 +145,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 			public.Use(middleware.PublicRateLimit(rdb, 60, 1*time.Minute))
 			public.Get("/metrics", publicHandler.GetMetrics)
 			public.Get("/campaigns/{id}", publicHandler.GetCampaignByID)
-			public.Post("/campaigns/donate", coreOpsHandler.ProcessDonation)
+			// public.Post("/campaigns/donate", coreOpsHandler.ProcessDonation)
 		})
 
 		// Auth (public — rate limited)
@@ -177,11 +179,21 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 			authenticated.Get("/users/me", authHandler.Me)
 
 			// Onboarding Wizard (allowed when profile is incomplete)
-			authenticated.Post("/onboarding", onboardingHandler.Submit)
+			authenticated.Post("/onboarding/identity", onboardingHandler.Phase1Identity)
+			authenticated.Post("/onboarding/interests", onboardingHandler.Phase2Interests)
+
+			// Profile Management
+			authenticated.Get("/profile", profileHandler.GetUniversalProfile)
+			authenticated.Put("/profile", profileHandler.UpdateUniversalProfile)
+			authenticated.Get("/profile/vault", profileHandler.GetVault)
+			authenticated.Post("/profile/vault", profileHandler.AddToVault)
 
 			// Strict block: endpoints requiring completed profile
 			authenticated.Group(func(strict chi.Router) {
 				strict.Use(middleware.RequireProfileCompleted())
+
+				// ── Dashboard ──
+				strict.Get("/dashboard", dashboardHandler.GetDashboardData)
 
 				// ── Scholarships ── (permission-based)
 				strict.Route("/scholarships", func(sch chi.Router) {
@@ -192,24 +204,29 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 						// Students & Admins
 						cycles.Get("/", scholarshipHandler.ListCycles)
 						
-						// Applications
+						// Specific Cycle & Applications
+						cycles.Get("/{id}", scholarshipHandler.GetCycle)
+						cycles.Get("/{id}/applications", scholarshipHandler.GetApplicationsByCycle)
+
+						// Applications Submit
 						cycles.Post("/{id}/apply", scholarshipHandler.SubmitApplication)
 					})
-					// Certificates
-					sch.Get("/applications/{id}/certificate", scholarshipHandler.GetCertificateData)
+					
+					sch.Route("/applications", func(apps chi.Router) {
+						apps.Get("/my", scholarshipHandler.GetMyApplications)
+						apps.Get("/assigned-to-me", scholarshipHandler.GetMyAssignedApplications)
+						
+						apps.Get("/{appId}", scholarshipHandler.GetApplicationDetails)
+						apps.Put("/{appId}/status", scholarshipHandler.UpdateApplicationStatus)
+						apps.Put("/{appId}/assign", scholarshipHandler.AssignCaseWorker)
+						apps.Put("/{appId}/priority", scholarshipHandler.UpdatePriority)
+						apps.Post("/{appId}/messages", scholarshipHandler.AddScholarshipMessage)
+						apps.Post("/{appId}/score", scholarshipHandler.SubmitApplicationScore)
+						
+						// Certificates
+						apps.Get("/{id}/certificate", scholarshipHandler.GetCertificateData)
+					})
 				})
-
-			// ── Housing ── (permission-based)
-			strict.Route("/housing", func(hsg chi.Router) {
-				hsg.Get("/buildings", housingHandler.GetBuildings)
-				hsg.Get("/buildings/{buildingId}/rooms", housingHandler.GetRooms)
-				
-				// Admin: requires housing.allocate permission
-				hsg.With(middleware.RequirePermission(permResolve, "housing.allocate", "housing.manage")).Post("/allocate", housingHandler.AllocateRoom)
-
-				// Resident endpoints
-				hsg.Get("/invoices/me", housingHandler.GetMyInvoices)
-			})
 
 			// ── Innovation ── (permission-based)
 			strict.Route("/innovation", func(inn chi.Router) {
@@ -226,7 +243,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 
 			// ── Campaigns & Donations ──
 			strict.Route("/campaigns", func(c chi.Router) {
-				c.Get("/", coreOpsHandler.GetCampaigns)
+				// c.Get("/", coreOpsHandler.GetCampaigns)
 			})
 
 			// ── Financial ── (permission-based)
@@ -243,7 +260,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 
 			// ── Inventory ── (permission-based)
 			strict.Route("/inventory", func(inv chi.Router) {
-				inv.With(middleware.RequirePermission(permResolve, "inventory.read")).Get("/assets", coreOpsHandler.GetAssets)
+				
 			})
 
 			// ── Notifications ──
@@ -253,11 +270,18 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 				notif.Put("/read-all", notificationHandler.MarkAllAsRead)
 			})
 
+			// ── Assets ──
+			strict.Route("/assets", func(a chi.Router) {
+				a.Get("/dashboard", assetHandler.GetDashboardStats)
+				a.Get("/", assetHandler.GetAssets)
+				a.Post("/", assetHandler.CreateAsset)
+			})
+
 			// ── Reports ── (permission-based)
 			strict.Route("/reports", func(rpt chi.Router) {
 				rpt.Use(middleware.RequirePermission(permResolve, "reports.read", "reports.generate"))
 				rpt.Get("/scholarships", reportHandler.GetScholarshipsReport)
-				rpt.Get("/housing", reportHandler.GetHousingReport)
+				// rpt.Get("/housing", reportHandler.GetHousingReport)
 				rpt.Get("/donations", reportHandler.GetDonationsReport)
 				rpt.Get("/finance", reportHandler.GetFinanceReport)
 			})
@@ -277,12 +301,14 @@ func New(cfg *config.Config, pool *pgxpool.Pool, rdb *redis.Client, logger *slog
 			// ── Admin ── (permission-based)
 			strict.Route("/admin", func(adm chi.Router) {
 				// All admin routes require at least one admin-level permission
-				adm.Use(middleware.RequireRoles("super_admin", "admin", "org_admin", "scholarship_manager", "housing_manager", "innovation_manager", "financial_officer"))
+				adm.Use(middleware.RequireRoles("super_admin", "admin", "org_admin", "scholarship_manager", "innovation_manager", "financial_officer"))
 				
-				// ── User Management ──
+				// 🛠️ User Management 🛠️
 				adm.Route("/users", func(users chi.Router) {
 					users.With(middleware.RequirePermission(permResolve, "users.read")).Get("/", userHandler.List)
 					users.With(middleware.RequirePermission(permResolve, "users.read")).Get("/{id}", userHandler.Get)
+					users.With(middleware.RequirePermission(permResolve, "users.read")).Get("/{id}/profile", profileHandler.GetAnyUserProfile)
+					users.With(middleware.RequirePermission(permResolve, "users.read")).Get("/{id}/vault", profileHandler.GetAnyUserVault)
 					users.With(middleware.RequirePermission(permResolve, "roles.assign")).Post("/{id}/roles", userHandler.AssignRole)
 					users.With(middleware.RequirePermission(permResolve, "roles.assign")).Delete("/{id}/roles/{roleId}", userHandler.RemoveRole)
 					users.With(middleware.RequirePermission(permResolve, "users.delete")).Delete("/{id}", userHandler.Deactivate)

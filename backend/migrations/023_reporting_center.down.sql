@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS scheduled_reports CASCADE;
+DROP TABLE IF EXISTS report_history CASCADE;

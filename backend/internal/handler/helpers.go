@@ -2,9 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sadaqah/backend/internal/middleware"
@@ -107,8 +110,11 @@ func writeValidationError(w http.ResponseWriter, r *http.Request, details []mode
 // parseJSON decodes the request body into the given destination.
 func parseJSON(r *http.Request, dst interface{}) error {
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
+	err := dec.Decode(dst)
+	if err != nil {
+		fmt.Printf("parseJSON error: %v\n", err)
+	}
+	return err
 }
 
 // parseAndValidateJSON decodes JSON, validates with struct tags, and writes errors automatically.
@@ -172,11 +178,21 @@ func paginatedResponse(data interface{}, total int64, params model.PaginationPar
 
 // getClientIP extracts the client IP from the request.
 func getClientIP(r *http.Request) string {
+	ip := ""
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+		// X-Forwarded-For can contain multiple IPs separated by commas
+		ips := strings.Split(xff, ",")
+		ip = strings.TrimSpace(ips[0])
+	} else if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		ip = xri
+	} else {
+		ip = r.RemoteAddr
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+
+	// Try to strip port if present
+	host, _, err := net.SplitHostPort(ip)
+	if err == nil {
+		return host
 	}
-	return r.RemoteAddr
+	return ip
 }

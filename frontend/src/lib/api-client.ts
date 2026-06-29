@@ -2,7 +2,7 @@ import axios from "axios";
 
 // In development, Next.js rewrites proxy /api/v1 to localhost:8080.
 // In production (Firebase static export), there is no proxy, so we hit the backend directly.
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "https://sadaqah-api.duckdns.org/api/v1";
 
 export const apiClient = axios.create({
@@ -37,10 +37,12 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt refresh for 401 errors that aren't already retried
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isProfileIncomplete = error.response?.status === 403 && error.response?.data?.error?.code === "PROFILE_INCOMPLETE";
+    
+    // Attempt refresh for 401 errors or stale 403 PROFILE_INCOMPLETE errors
+    if ((error.response?.status === 401 || isProfileIncomplete) && !originalRequest._retry) {
       // Don't intercept refresh token loops
-      if (originalRequest.url === "/auth/refresh" || originalRequest.url === "/auth/login") {
+      if (originalRequest.url?.includes("/auth/refresh") || originalRequest.url?.includes("/auth/login")) {
         return Promise.reject(error);
       }
 
@@ -68,7 +70,7 @@ apiClient.interceptors.response.use(
         processQueue(refreshError);
 
         // If refresh fails, cookies are likely cleared or expired. Redirect to login.
-        if (typeof window !== "undefined") {
+        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
           window.location.href = "/login";
         }
 

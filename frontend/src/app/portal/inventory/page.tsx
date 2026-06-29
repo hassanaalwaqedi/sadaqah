@@ -1,99 +1,183 @@
 "use client";
 
-import { useState } from "react";
-import { CubeIcon, QrCodeIcon, MapPinIcon, CheckBadgeIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect } from "react";
+import { 
+  CubeIcon, 
+  QrCodeIcon, 
+  MapPinIcon, 
+  ExclamationTriangleIcon, 
+  BanknotesIcon, 
+  WrenchScrewdriverIcon, 
+  BuildingOffice2Icon, 
+  PlusIcon,
+  CheckBadgeIcon
+} from "@heroicons/react/24/outline";
+import { apiClient } from "@/lib/api-client";
+import { toast } from "react-hot-toast";
+import Link from "next/link";
 
-const MOCK_ASSETS = [
-  {
-    id: "a-001",
-    asset_tag: "IT-LAP-2024-001",
-    name: "MacBook Pro 16\" (M3 Max)",
-    condition: "new",
-    location: "IT Storage Room A",
-    purchase_cost: 3499.00
-  },
-  {
-    id: "a-002",
-    asset_tag: "LAB-MIC-001",
-    name: "Electron Microscope Zeiss",
-    condition: "good",
-    location: "Biology Lab 304",
-    purchase_cost: 45000.00
-  },
-  {
-    id: "a-003",
-    asset_tag: "FURN-CHR-089",
-    name: "Ergonomic Office Chair",
-    condition: "poor",
-    location: "Faculty Office 211",
-    purchase_cost: 250.00
-  }
-];
+interface DashboardStats {
+  total_assets: number;
+  active_assets: number;
+  maintenance_assets: number;
+  assigned_assets: number;
+  total_value: number;
+}
 
 export default function InventoryDashboard() {
-  const [assets] = useState(MOCK_ASSETS);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await apiClient.get("/assets/dashboard");
+        setStats(response.data);
+      } catch (error) {
+        console.error("Failed to load inventory stats", error);
+        toast.error("حدث خطأ أثناء تحميل بيانات الأصول");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchStats();
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end mb-8">
+    <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold gradient-text">Inventory & Assets</h1>
-          <p className="text-surface-600 dark:text-surface-400 mt-1">
-            Track IT equipment, lab machinery, furniture, and maintain their condition.
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <CubeIcon className="w-8 h-8 text-primary-600" />
+            Enterprise Asset Management
+          </h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
+            Track physical assets, consumables, locations, and maintenance records.
           </p>
         </div>
-        <button className="btn-gradient px-4 py-2 flex items-center gap-2">
-          <QrCodeIcon className="w-5 h-5" /> Scan Asset
-        </button>
+        <div className="flex gap-3">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-surface-800 border border-gray-300 dark:border-surface-700 rounded-xl hover:bg-gray-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
+            <QrCodeIcon className="w-5 h-5" />
+            Scan QR Code
+          </button>
+          <Link href="/portal/inventory/assets" className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl transition-all shadow-md hover:shadow-lg">
+            <PlusIcon className="w-5 h-5" />
+            Register Asset
+          </Link>
+        </div>
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-surface-50 dark:bg-surface-800/50 text-surface-600 dark:text-surface-400 border-b">
-            <tr>
-              <th className="px-6 py-4 font-medium">Asset Details</th>
-              <th className="px-6 py-4 font-medium">Location</th>
-              <th className="px-6 py-4 font-medium">Condition</th>
-              <th className="px-6 py-4 font-medium text-right">Value</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
-            {assets.map((asset) => (
-              <tr key={asset.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/20 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-surface-100 dark:bg-surface-800 rounded-xl text-surface-500">
-                      <CubeIcon className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-surface-900 dark:text-white">{asset.name}</p>
-                      <p className="text-xs text-surface-500 font-mono mt-1 flex items-center gap-1">
-                        <QrCodeIcon className="w-3 h-3" /> {asset.asset_tag}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2 text-surface-600 dark:text-surface-400">
-                    <MapPinIcon className="w-4 h-4 text-primary-500" />
-                    {asset.location}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    {asset.condition === 'new' && <CheckBadgeIcon className="w-5 h-5 text-emerald-500" />}
-                    {asset.condition === 'good' && <CheckBadgeIcon className="w-5 h-5 text-blue-500" />}
-                    {asset.condition === 'poor' && <ExclamationTriangleIcon className="w-5 h-5 text-amber-500" />}
-                    <span className="capitalize font-medium">{asset.condition}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right font-mono font-medium text-surface-700 dark:text-surface-300">
-                  ${asset.purchase_cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-32 bg-surface-200 dark:bg-surface-800 animate-pulse rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Total Assets</p>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stats?.total_assets || 0}</h3>
+              </div>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                <CubeIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-green-600 flex items-center gap-1">
+              Active: {stats?.active_assets || 0}
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Assigned Custody</p>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stats?.assigned_assets || 0}</h3>
+              </div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                <BuildingOffice2Icon className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-purple-600">Assets currently assigned to staff</p>
+          </div>
+
+          <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Under Maintenance</p>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stats?.maintenance_assets || 0}</h3>
+              </div>
+              <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
+                <WrenchScrewdriverIcon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-orange-600">Assets requiring attention</p>
+          </div>
+
+          <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Total Asset Value</p>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white">${stats?.total_value?.toLocaleString() || 0}</h3>
+              </div>
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                <BanknotesIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-emerald-600">Estimated current value</p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <ExclamationTriangleIcon className="w-6 h-6 text-orange-500" />
+              Maintenance Alerts
+            </h2>
+            <button className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</button>
+          </div>
+          <div className="flex flex-col items-center justify-center h-48 text-gray-500 dark:text-gray-400 text-center">
+            <CheckBadgeIcon className="w-12 h-12 text-emerald-500 mb-3 opacity-50" />
+            <p>No urgent maintenance required.</p>
+            <p className="text-sm opacity-75">All assets are in good condition.</p>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-surface-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-surface-700">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <MapPinIcon className="w-6 h-6 text-primary-500" />
+              Top Locations
+            </h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-surface-700/50 rounded-xl">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Headquarters</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Head Office</p>
+              </div>
+              <span className="bg-white dark:bg-surface-800 px-3 py-1 rounded-full text-sm font-medium border border-gray-200 dark:border-surface-600">
+                120 Assets
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-surface-700/50 rounded-xl">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Istanbul Student Dormitory</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Housing</p>
+              </div>
+              <span className="bg-white dark:bg-surface-800 px-3 py-1 rounded-full text-sm font-medium border border-gray-200 dark:border-surface-600">
+                450 Assets
+              </span>
+            </div>
+          </div>
+          <Link href="/portal/inventory/locations" className="mt-4 block text-center w-full py-3 bg-gray-50 dark:bg-surface-700 hover:bg-gray-100 dark:hover:bg-surface-600 text-gray-900 dark:text-white font-medium rounded-xl transition-colors">
+            Manage Locations
+          </Link>
+        </div>
       </div>
     </div>
   );

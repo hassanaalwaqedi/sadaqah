@@ -11,14 +11,14 @@ import (
 )
 
 type PublicHandler struct {
-	svc *service.CoreOpsService
-	rdb *redis.Client
+	coreSvc *service.CoreOpsService
+	rdb     *redis.Client
 }
 
-func NewPublicHandler(svc *service.CoreOpsService, rdb *redis.Client) *PublicHandler {
+func NewPublicHandler(coreSvc *service.CoreOpsService, rdb *redis.Client) *PublicHandler {
 	return &PublicHandler{
-		svc: svc,
-		rdb: rdb,
+		coreSvc: coreSvc,
+		rdb:     rdb,
 	}
 }
 
@@ -30,13 +30,8 @@ func (h *PublicHandler) GetCampaignByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	campaign, err := h.svc.GetCampaignByID(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Campaign not found", http.StatusNotFound)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, campaign)
+	http.Error(w, "Campaign not found", http.StatusNotFound)
+	return
 }
 
 // GetMetrics handles GET /api/v1/public/metrics with Redis caching
@@ -55,7 +50,7 @@ func (h *PublicHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Cache miss. Fetch from PostgreSQL
-	studentCount, totalDonations, err := h.svc.GetPublicMetrics(ctx)
+	studentCount, totalDonations, err := h.coreSvc.GetPublicMetrics(ctx)
 	if err != nil {
 		http.Error(w, "Failed to compute metrics", http.StatusInternalServerError)
 		return

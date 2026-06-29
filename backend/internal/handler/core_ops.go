@@ -15,50 +15,7 @@ func NewCoreOpsHandler(svc *service.CoreOpsService) *CoreOpsHandler {
 	return &CoreOpsHandler{svc: svc}
 }
 
-// ── Donations & Campaigns ──
 
-func (h *CoreOpsHandler) GetCampaigns(w http.ResponseWriter, r *http.Request) {
-	campaigns, err := h.svc.GetCampaigns(r.Context())
-	if err != nil {
-		http.Error(w, "Failed to fetch campaigns", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, campaigns)
-}
-
-func (h *CoreOpsHandler) ProcessDonation(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		CampaignID    string  `json:"campaign_id"`
-		DonorEmail    string  `json:"donor_email"`
-		Amount        float64 `json:"amount"`
-		Currency      string  `json:"currency"`
-		PaymentMethod string  `json:"payment_method"`
-		IsAnonymous   bool    `json:"is_anonymous"`
-	}
-
-	if err := parseJSON(r, &req); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
-		return
-	}
-
-	// Try to get donor ID if logged in, otherwise nil
-	var donorID *string
-	if id, ok := middleware.GetUserID(r.Context()); ok {
-		strID := id.String()
-		donorID = &strID
-	}
-
-	// Mocking payment reference for now
-	paymentRef := "MOCK_TX_987654321"
-
-	donation, err := h.svc.ProcessDonation(r.Context(), req.CampaignID, donorID, req.DonorEmail, req.Amount, req.Currency, req.PaymentMethod, paymentRef, req.IsAnonymous)
-	if err != nil {
-		http.Error(w, "Failed to process donation", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, donation)
-}
 
 // ── Financial ──
 
@@ -164,12 +121,3 @@ func (h *CoreOpsHandler) GetSystemReports(w http.ResponseWriter, r *http.Request
 }
 
 // ── Inventory ──
-
-func (h *CoreOpsHandler) GetAssets(w http.ResponseWriter, r *http.Request) {
-	assets, err := h.svc.GetAssets(r.Context())
-	if err != nil {
-		http.Error(w, "Failed to fetch assets", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, assets)
-}
